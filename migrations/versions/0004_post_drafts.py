@@ -13,6 +13,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    op.add_column("source_items", sa.Column("facts_cache", sa.Text(), nullable=True))
     op.create_table(
         "post_drafts",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
@@ -28,4 +29,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.drop_column("source_items", "facts_cache")
     op.drop_table("post_drafts")
