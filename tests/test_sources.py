@@ -1,5 +1,7 @@
 import pytest
+from sqlalchemy import select
 
+from autocontent.domain import SourceItem
 from autocontent.repos import ProjectRepository, SourceRepository, UserRepository
 from autocontent.services.rss_fetcher import fetch_and_save_source
 
@@ -66,3 +68,5 @@ async def test_fetch_and_save_integration(session):
     assert source_after is not None
     assert source_after.status == "ok"
     assert saved == 2
+    items = await session.execute(select(SourceItem).where(SourceItem.source_id == source.id))
+    assert all(item.content_hash for item in items.scalars().all())

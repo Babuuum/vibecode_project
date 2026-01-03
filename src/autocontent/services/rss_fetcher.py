@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 from datetime import datetime, timezone
 from typing import Iterable
 
@@ -10,11 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from autocontent.domain import Source
 from autocontent.integrations.rss_client import HttpRSSClient, RSSClient
 from autocontent.repos import SourceItemRepository, SourceRepository
-
-
-def _content_hash(*parts: str) -> str:
-    joined = "|".join(parts)
-    return hashlib.sha256(joined.encode("utf-8")).hexdigest()
+from autocontent.shared.text import compute_content_hash, normalize_text
 
 
 def _parse_datetime(entry: dict) -> datetime | None:
@@ -51,8 +46,8 @@ async def fetch_and_save_source(
             title = entry.get("title") or "(no title)"
             external_id = entry.get("id") or link or title
             published_at = _parse_datetime(entry)
-            raw_text = entry.get("summary") or entry.get("description") or ""
-            content_hash = _content_hash(link, title, raw_text)
+            raw_text = normalize_text(entry.get("summary") or entry.get("description") or "")
+            content_hash = compute_content_hash(link, title, raw_text)
 
             item = await source_item_repo.create_item(
                 source_id=source.id,
@@ -61,6 +56,7 @@ async def fetch_and_save_source(
                 title=title,
                 published_at=published_at,
                 raw_text=raw_text,
+                facts_cache=None,
                 content_hash=content_hash,
             )
             if item:

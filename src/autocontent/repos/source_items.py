@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +25,16 @@ class SourceItemRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_by_id(self, source_item_id: int) -> SourceItem | None:
+        stmt = select(SourceItem).where(SourceItem.id == source_item_id)
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_by_id(self, source_item_id: int) -> SourceItem | None:
+        stmt = select(SourceItem).where(SourceItem.id == source_item_id)
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def create_item(
         self,
         source_id: int,
@@ -33,6 +43,7 @@ class SourceItemRepository:
         title: str,
         published_at: datetime | None,
         raw_text: str | None,
+        facts_cache: str | None,
         content_hash: str,
         status: str = "new",
     ) -> SourceItem | None:
@@ -50,6 +61,7 @@ class SourceItemRepository:
             title=title,
             published_at=published_at,
             raw_text=raw_text,
+            facts_cache=facts_cache,
             content_hash=content_hash,
             status=status,
         )
@@ -61,3 +73,12 @@ class SourceItemRepository:
             await self._session.rollback()
             return None
         return item
+
+    async def update_facts_cache(self, source_item_id: int, facts: str) -> None:
+        stmt = (
+            update(SourceItem)
+            .where(SourceItem.id == source_item_id)
+            .values(facts_cache=facts, status="processed")
+        )
+        await self._session.execute(stmt)
+        await self._session.commit()

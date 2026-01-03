@@ -4,6 +4,7 @@ from .projects import ProjectRepository
 from .source_items import SourceItemRepository
 from .sources import SourceRepository
 from .users import UserRepository
+from .post_drafts import PostDraftRepository
 
 __all__ = [
     "UserRepository",
@@ -12,4 +13,5 @@ __all__ = [
     "ChannelBindingRepository",
     "SourceRepository",
     "SourceItemRepository",
+    "PostDraftRepository",
 ]

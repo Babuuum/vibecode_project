@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import List
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from autocontent.shared.db import Base
@@ -90,5 +91,22 @@ class SourceItem(Base):
     title: Mapped[str] = mapped_column(String(length=512), nullable=False)
     published_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    facts_cache: Mapped[str | None] = mapped_column(Text, nullable=True)
     content_hash: Mapped[str] = mapped_column(String(length=128), nullable=False)
     status: Mapped[str] = mapped_column(String(length=32), nullable=False, default="new")
+
+
+class PostDraft(Base):
+    __tablename__ = "post_drafts"
+    __table_args__ = (UniqueConstraint("draft_hash", name="uq_post_drafts_hash"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    source_item_id: Mapped[int] = mapped_column(ForeignKey("source_items.id"), nullable=False)
+    template_id: Mapped[str | None] = mapped_column(String(length=128), nullable=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    draft_hash: Mapped[str] = mapped_column(String(length=128), nullable=False)
+    status: Mapped[str] = mapped_column(String(length=32), nullable=False, default="new")
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

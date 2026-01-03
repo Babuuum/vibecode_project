@@ -1,0 +1,31 @@
+"""Add post_drafts table."""
+
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+# revision identifiers, used by Alembic.
+revision: str = "0004_post_drafts"
+down_revision: Union[str, None] = "0003_sources"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    op.create_table(
+        "post_drafts",
+        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
+        sa.Column("project_id", sa.Integer(), sa.ForeignKey("projects.id"), nullable=False),
+        sa.Column("source_item_id", sa.Integer(), sa.ForeignKey("source_items.id"), nullable=False),
+        sa.Column("template_id", sa.String(length=128), nullable=True),
+        sa.Column("text", sa.Text(), nullable=False),
+        sa.Column("draft_hash", sa.String(length=128), nullable=False),
+        sa.Column("status", sa.String(length=32), nullable=False, server_default="new"),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.UniqueConstraint("draft_hash", name="uq_post_drafts_hash"),
+    )
+
+
+def downgrade() -> None:
+    op.drop_table("post_drafts")
