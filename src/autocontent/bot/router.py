@@ -18,9 +18,17 @@ from autocontent.integrations.telegram_client import (
     TelegramClient,
     TelegramClientError,
 )
-from autocontent.services import ChannelBindingService, ProjectService, SourceService
+from autocontent.integrations.task_queue import CeleryTaskQueue, TaskQueue
+from autocontent.services import ChannelBindingService, DraftService, ProjectService, SourceService
 from autocontent.services.channel_binding import ChannelBindingNotFoundError
 from autocontent.services.source_service import DuplicateSourceError
+from autocontent.shared.cooldown import CooldownStore, InMemoryCooldownStore, RedisCooldownStore
+from autocontent.config import Settings
+
+try:
+    from redis import asyncio as aioredis
+except Exception:  # pragma: no cover
+    aioredis = None
 
 router = Router()
 
@@ -39,7 +47,19 @@ LANGUAGE_OPTIONS = ["en", "ru"]
 NICHE_OPTIONS = ["tech", "marketing", "lifestyle"]
 TONE_OPTIONS = ["friendly", "formal", "casual"]
 CHANNEL_MENU = ["Настройки", "Подключить канал", "Проверить"]
-SOURCE_MENU = ["Добавить RSS", "Список источников", "Fetch now"] + CHANNEL_MENU
+DRAFT_MENU = ["Сгенерировать сейчас", "Черновики"]
+SOURCE_MENU = ["Добавить RSS", "Список источников", "Fetch now"] + DRAFT_MENU + CHANNEL_MENU
+COOLDOWN_TTL_SECONDS = 45
+
+_default_task_queue: TaskQueue = CeleryTaskQueue()
+if aioredis:
+    try:
+        _redis_client = aioredis.from_url(Settings().redis_url)
+        _cooldown_store: CooldownStore = RedisCooldownStore(_redis_client)
+    except Exception:
+        _cooldown_store = InMemoryCooldownStore()
+else:  # pragma: no cover
+    _cooldown_store = InMemoryCooldownStore()
 
 
 def _build_keyboard(options: Iterable[str]) -> ReplyKeyboardMarkup:
@@ -305,4 +325,93 @@ async def fetch_now_handler(message: Message, state: FSMContext, session: AsyncS
     total_saved = await service.fetch_all_for_project(project_id)
     await message.answer(
         f"Fetch завершен. Новых записей: {total_saved}", reply_markup=_build_keyboard(SOURCE_MENU)
+    )
+
+
+def _resolve_cooldown_store(cooldown_store: CooldownStore | None) -> CooldownStore:
+    return cooldown_store or _cooldown_store
+
+
+def _resolve_task_queue(task_queue: TaskQueue | None) -> TaskQueue:
+    return task_queue or _default_task_queue
+
+
+@router.message(F.text == "Сгенерировать сейчас")
+async def generate_now_handler(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+    task_queue: TaskQueue | None = None,
+    cooldown_store: CooldownStore | None = None,
+) -> Any:
+    project_id = await _resolve_project_id(message, state, session)
+    if not project_id:
+        await message.answer("Проект не найден, начните /start.")
+        return
+
+    service = SourceService(session)
+    sources = await service.list_sources(project_id)
+    if not sources:
+        await message.answer("Источники не добавлены. Используй «Добавить RSS».")
+        return
+
+    item = await service.get_latest_new_item(project_id)
+    if not item:
+        await message.answer("Нет новых материалов для генерации. Попробуй Fetch now.")
+        return
+
+    cooldown = _resolve_cooldown_store(cooldown_store)
+    if not await cooldown.acquire(f"draft:{project_id}", COOLDOWN_TTL_SECONDS):
+        await message.answer("Генерация уже запущена. Подожди чуть-чуть и попробуй снова.")
+        return
+
+    queue = _resolve_task_queue(task_queue)
+    queue.enqueue_generate_draft(item.id)
+    await message.answer(
+        f"Поставил в очередь генерацию драфта для материала #{item.id}.",
+        reply_markup=_build_keyboard(SOURCE_MENU),
+    )
+
+
+@router.message(F.text == "Черновики")
+async def drafts_list_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
+    project_id = await _resolve_project_id(message, state, session)
+    if not project_id:
+        await message.answer("Проект не найден, начните /start.")
+        return
+
+    service = DraftService(session)
+    drafts = await service.list_drafts(project_id, limit=10)
+    if not drafts:
+        await message.answer("Черновиков пока нет.")
+        return
+
+    lines = [f"{draft.id}: [{draft.status}] {draft.text[:80]}" for draft in drafts]
+    lines.append("Для просмотра: /draft <id>")
+    await message.answer("\n".join(lines), reply_markup=_build_keyboard(SOURCE_MENU))
+
+
+@router.message(Command("draft"))
+async def draft_view_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
+    args = (message.text or "").split(maxsplit=1)
+    if len(args) < 2 or not args[1].strip().isdigit():
+        await message.answer("Используй: /draft <id>")
+        return
+    draft_id = int(args[1].strip())
+
+    project_id = await _resolve_project_id(message, state, session)
+    if not project_id:
+        await message.answer("Проект не найден, начните /start.")
+        return
+
+    service = DraftService(session)
+    draft = await service.get_draft(draft_id)
+    if not draft or draft.project_id != project_id:
+        await message.answer("Драфт не найден.")
+        return
+
+    await message.answer(
+        f"Драфт #{draft.id} [{draft.status}]:\n{draft.text}",
+        reply_markup=_build_keyboard(SOURCE_MENU),
+        parse_mode=ParseMode.HTML,
     )

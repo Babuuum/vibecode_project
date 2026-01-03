@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from autocontent.domain import Source
 from autocontent.integrations.rss_client import HttpRSSClient, RSSClient
-from autocontent.repos import SourceRepository
+from autocontent.repos import SourceItemRepository, SourceRepository
 from autocontent.services.rss_fetcher import fetch_and_save_source
 
 
@@ -17,6 +17,7 @@ class SourceService:
     def __init__(self, session: AsyncSession, rss_client: RSSClient | None = None) -> None:
         self._session = session
         self._repo = SourceRepository(session)
+        self._items = SourceItemRepository(session)
         self._rss_client = rss_client or HttpRSSClient()
 
     async def add_source(self, project_id: int, url: str) -> None:
@@ -39,3 +40,6 @@ class SourceService:
             _, saved = await self.fetch_source(src.id)
             total_saved += saved
         return total_saved
+
+    async def get_latest_new_item(self, project_id: int):
+        return await self._items.get_latest_new_for_project(project_id)

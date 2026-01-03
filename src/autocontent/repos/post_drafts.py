@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +18,26 @@ class PostDraftRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_by_id(self, draft_id: int) -> PostDraft | None:
+        stmt = select(PostDraft).where(PostDraft.id == draft_id)
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def list_latest(self, project_id: int, limit: int = 10) -> list[PostDraft]:
+        stmt = (
+            select(PostDraft)
+            .where(PostDraft.project_id == project_id)
+            .order_by(PostDraft.id.desc())
+            .limit(limit)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def count(self) -> int:
+        stmt = select(PostDraft)
+        result = await self._session.execute(stmt)
+        return len(list(result.scalars()))
+
     async def create_draft(
         self,
         project_id: int,
@@ -23,7 +45,7 @@ class PostDraftRepository:
         template_id: str | None,
         text: str,
         draft_hash: str,
-        status: str = "new",
+        status: str = "draft",
     ) -> PostDraft:
         existing = await self.get_by_hash(draft_hash)
         if existing:
@@ -48,3 +70,8 @@ class PostDraftRepository:
             if existing:
                 return existing
             raise
+
+    @staticmethod
+    def compute_draft_hash(source_item_id: int, text: str) -> str:
+        payload = f"{source_item_id}|{text}".encode("utf-8")
+        return hashlib.sha256(payload).hexdigest()

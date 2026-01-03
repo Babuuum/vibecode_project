@@ -6,7 +6,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from autocontent.domain import SourceItem
+from autocontent.domain import Source, SourceItem
 
 
 class SourceItemRepository:
@@ -82,3 +82,14 @@ class SourceItemRepository:
         )
         await self._session.execute(stmt)
         await self._session.commit()
+
+    async def get_latest_new_for_project(self, project_id: int) -> SourceItem | None:
+        stmt = (
+            select(SourceItem)
+            .join(Source, Source.id == SourceItem.source_id)
+            .where(Source.project_id == project_id, SourceItem.status == "new")
+            .order_by(SourceItem.id.desc())
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
