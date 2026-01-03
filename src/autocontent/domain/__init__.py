@@ -1,5 +1,14 @@
 from .health import HealthStatus
-from .models import ChannelBinding, PostDraft, Project, ProjectSettings, Source, SourceItem, User
+from .models import (
+    ChannelBinding,
+    PostDraft,
+    Project,
+    ProjectSettings,
+    PublicationLog,
+    Source,
+    SourceItem,
+    User,
+)
 
 __all__ = [
     "HealthStatus",
@@ -7,6 +16,7 @@ __all__ = [
     "Project",
     "ProjectSettings",
     "ChannelBinding",
+    "PublicationLog",
     "Source",
     "SourceItem",
     "PostDraft",

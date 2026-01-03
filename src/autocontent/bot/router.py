@@ -7,7 +7,14 @@ from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    Message,
+    ReplyKeyboardMarkup,
+)
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +30,7 @@ from autocontent.services import ChannelBindingService, DraftService, ProjectSer
 from autocontent.services.channel_binding import ChannelBindingNotFoundError
 from autocontent.services.source_service import DuplicateSourceError
 from autocontent.shared.cooldown import CooldownStore, InMemoryCooldownStore, RedisCooldownStore
+from autocontent.shared.idempotency import IdempotencyStore, InMemoryIdempotencyStore, RedisIdempotencyStore
 from autocontent.config import Settings
 
 try:
@@ -56,10 +64,13 @@ if aioredis:
     try:
         _redis_client = aioredis.from_url(Settings().redis_url)
         _cooldown_store: CooldownStore = RedisCooldownStore(_redis_client)
+        _publish_store: IdempotencyStore = RedisIdempotencyStore(_redis_client)
     except Exception:
         _cooldown_store = InMemoryCooldownStore()
+        _publish_store = InMemoryIdempotencyStore()
 else:  # pragma: no cover
     _cooldown_store = InMemoryCooldownStore()
+    _publish_store = InMemoryIdempotencyStore()
 
 
 def _build_keyboard(options: Iterable[str]) -> ReplyKeyboardMarkup:
@@ -336,6 +347,10 @@ def _resolve_task_queue(task_queue: TaskQueue | None) -> TaskQueue:
     return task_queue or _default_task_queue
 
 
+def _resolve_publish_store(store: IdempotencyStore | None) -> IdempotencyStore:
+    return store or _publish_store
+
+
 @router.message(F.text == "Сгенерировать сейчас")
 async def generate_now_handler(
     message: Message,
@@ -412,6 +427,74 @@ async def draft_view_handler(message: Message, state: FSMContext, session: Async
 
     await message.answer(
         f"Драфт #{draft.id} [{draft.status}]:\n{draft.text}",
-        reply_markup=_build_keyboard(SOURCE_MENU),
+        reply_markup=_draft_actions_keyboard(draft.id),
         parse_mode=ParseMode.HTML,
     )
+
+
+def _draft_actions_keyboard(draft_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Опубликовать", callback_data=f"publish:{draft_id}"),
+                InlineKeyboardButton(text="🗑️ Отклонить", callback_data=f"reject:{draft_id}"),
+            ]
+        ]
+    )
+
+
+@router.callback_query(F.data.startswith("publish:"))
+async def publish_draft_handler(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    task_queue: TaskQueue | None = None,
+    publish_store: IdempotencyStore | None = None,
+) -> Any:
+    draft_id = int(callback.data.split(":", 1)[1])
+    project_id = await _resolve_project_id(callback.message, state, session)  # type: ignore[arg-type]
+    if not project_id:
+        await callback.answer("Проект не найден.")
+        return
+
+    draft_service = DraftService(session)
+    draft = await draft_service.get_draft(draft_id)
+    if not draft or draft.project_id != project_id:
+        await callback.answer("Драфт не найден.")
+        return
+
+    store = _resolve_publish_store(publish_store)
+    if not await store.acquire(f"publish:{draft_id}", 24 * 60 * 60):
+        await callback.answer("Публикация уже выполняется.")
+        return
+
+    queue = _resolve_task_queue(task_queue)
+    queue.enqueue_publish_draft(draft_id)
+    await callback.answer("Отправил в публикацию.")
+    await callback.message.answer(
+        f"Драфт #{draft.id} поставлен в очередь на публикацию.",
+        reply_markup=_build_keyboard(SOURCE_MENU),
+    )
+
+
+@router.callback_query(F.data.startswith("reject:"))
+async def reject_draft_handler(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+) -> Any:
+    draft_id = int(callback.data.split(":", 1)[1])
+    project_id = await _resolve_project_id(callback.message, state, session)  # type: ignore[arg-type]
+    if not project_id:
+        await callback.answer("Проект не найден.")
+        return
+
+    draft_service = DraftService(session)
+    draft = await draft_service.get_draft(draft_id)
+    if not draft or draft.project_id != project_id:
+        await callback.answer("Драфт не найден.")
+        return
+
+    await draft_service.reject_draft(draft_id)
+    await callback.answer("Драфт отклонен.")
+    await callback.message.answer("Драфт помечен как отклоненный.", reply_markup=_build_keyboard(SOURCE_MENU))

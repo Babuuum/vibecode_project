@@ -84,6 +84,15 @@ class DraftService:
     async def get_draft(self, draft_id: int) -> PostDraft | None:
         return await self._drafts.get_by_id(draft_id)
 
+    async def set_status(self, draft_id: int, status: str) -> None:
+        await self._drafts.update_status(draft_id, status)
+
+    async def reject_draft(self, draft_id: int) -> None:
+        await self.set_status(draft_id, "rejected")
+
+    async def reject_draft(self, draft_id: int) -> None:
+        await self._drafts.update_status(draft_id, "rejected")
+
     async def _extract_facts(self, item: SourceItem) -> str:
         raw_text = normalize_text(item.raw_text or "")
         prompt = (

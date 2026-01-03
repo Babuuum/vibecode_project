@@ -38,8 +38,8 @@ class SourceItemRepository:
         title: str,
         published_at: datetime | None,
         raw_text: str | None,
-        facts_cache: str | None = None,
         content_hash: str,
+        facts_cache: str | None = None,
         status: str = "new",
     ) -> SourceItem | None:
         existing = await self.get_by_external_id(source_id, external_id)

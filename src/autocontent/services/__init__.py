@@ -4,6 +4,7 @@ from .projects import ProjectService
 from .llm_gateway import LLMGateway
 from .draft_service import DraftService
 from .source_service import SourceService
+from .publication_service import PublicationService
 
 __all__ = [
     "HealthService",
@@ -12,4 +13,5 @@ __all__ = [
     "SourceService",
     "LLMGateway",
     "DraftService",
+    "PublicationService",
 ]

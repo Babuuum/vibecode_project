@@ -22,6 +22,14 @@ class PostDraftRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def update_status(self, draft_id: int, status: str) -> None:
+        draft = await self.get_by_id(draft_id)
+        if not draft:
+            return
+        draft.status = status
+        await self._session.commit()
+        await self._session.refresh(draft)
+
     async def list_latest(self, project_id: int, limit: int = 10) -> list[PostDraft]:
         stmt = (
             select(PostDraft)
@@ -69,6 +77,14 @@ class PostDraftRepository:
             if existing:
                 return existing
             raise
+
+    async def update_status(self, draft_id: int, status: str) -> None:
+        draft = await self.get_by_id(draft_id)
+        if not draft:
+            return
+        draft.status = status
+        self._session.add(draft)
+        await self._session.commit()
 
     @staticmethod
     def compute_draft_hash(

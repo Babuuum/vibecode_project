@@ -6,9 +6,15 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from autocontent.bot.router import draft_view_handler, drafts_list_handler, generate_now_handler
+from autocontent.bot.router import (
+    draft_view_handler,
+    drafts_list_handler,
+    generate_now_handler,
+    publish_draft_handler,
+)
 from autocontent.integrations.task_queue import TaskQueue
 from autocontent.repos import (
+    ChannelBindingRepository,
     PostDraftRepository,
     ProjectRepository,
     SourceItemRepository,
@@ -17,7 +23,6 @@ from autocontent.repos import (
 )
 from autocontent.shared.cooldown import InMemoryCooldownStore
 from autocontent.shared.text import compute_content_hash
-
 
 @dataclass
 class FakeFromUser:
@@ -29,6 +34,17 @@ class FakeMessage:
     text: str
     from_user: FakeFromUser
     answers: List[str] = field(default_factory=list)
+    message_id: int = 1
+
+    async def answer(self, text: str, **kwargs: Any) -> None:  # noqa: ARG002
+        self.answers.append(text)
+
+
+@dataclass
+class FakeCallback:
+    data: str
+    message: FakeMessage
+    answers: List[str] = field(default_factory=list)
 
     async def answer(self, text: str, **kwargs: Any) -> None:  # noqa: ARG002
         self.answers.append(text)
@@ -37,9 +53,13 @@ class FakeMessage:
 class FakeQueue(TaskQueue):
     def __init__(self) -> None:
         self.items: list[int] = []
+        self.publish_items: list[int] = []
 
     def enqueue_generate_draft(self, source_item_id: int) -> None:
         self.items.append(source_item_id)
+
+    def enqueue_publish_draft(self, draft_id: int) -> None:
+        self.publish_items.append(draft_id)
 
 
 @pytest.mark.asyncio
@@ -154,3 +174,56 @@ async def test_drafts_list_and_view(session) -> None:
     view_msg = FakeMessage(text=f"/draft {draft.id}", from_user=FakeFromUser(id=user.tg_id))
     await draft_view_handler(message=view_msg, state=state, session=session)
     assert any("Драфт" in ans for ans in view_msg.answers)
+
+
+@pytest.mark.asyncio
+async def test_publish_callback_enqueue(session) -> None:
+    user_repo = UserRepository(session)
+    project_repo = ProjectRepository(session)
+    channel_repo = ChannelBindingRepository(session)
+    source_repo = SourceRepository(session)
+    item_repo = SourceItemRepository(session)
+    drafts_repo = PostDraftRepository(session)
+
+    user = await user_repo.create_user(tg_id=31)
+    project = await project_repo.create_project(owner_user_id=user.id, title="P4", tz="UTC")
+    await channel_repo.create_or_update(project_id=project.id, channel_id="@ch", channel_username="@ch")
+    await channel_repo.update_status(project_id=project.id, status="connected", last_error=None)
+    source = await source_repo.create_source(project_id=project.id, url="http://example.com")
+    item = await item_repo.create_item(
+        source_id=source.id,
+        external_id="ex3",
+        link="http://example.com/3",
+        title="title",
+        published_at=None,
+        raw_text="body",
+        facts_cache=None,
+        content_hash=compute_content_hash("http://example.com/3", "title", "body"),
+    )
+    assert item is not None
+    draft = await drafts_repo.create_draft(
+        project_id=project.id,
+        source_item_id=item.id,
+        template_id=None,
+        text="draft text http://example.com/3",
+        draft_hash=drafts_repo.compute_draft_hash(
+            project_id=project.id,
+            source_item_id=item.id,
+            template_id=None,
+            raw_text=item.raw_text or "",
+        ),
+    )
+
+    storage = MemoryStorage()
+    state = FSMContext(storage, StorageKey(bot_id=0, user_id=user.id, chat_id=user.id))
+    await state.update_data(project_id=project.id)
+
+    queue = FakeQueue()
+    cb = FakeCallback(
+        data=f"publish:{draft.id}",
+        message=FakeMessage(text="", from_user=FakeFromUser(id=user.tg_id)),
+    )
+
+    await publish_draft_handler(callback=cb, state=state, session=session, task_queue=queue)  # type: ignore[arg-type]
+
+    assert queue.publish_items == [draft.id]

@@ -41,6 +41,9 @@ class FakeTelegramClient(TelegramClient):
             raise ChannelNotFoundError("not found")
         return None
 
+    async def send_post(self, channel_id: str, text: str) -> str:  # noqa: ARG002
+        return "1"
+
 
 @pytest.mark.asyncio
 async def test_channel_check_success(session) -> None:
