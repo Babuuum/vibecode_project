@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,17 +31,17 @@ class SourceItemRepository:
         external_id: str,
         link: str,
         title: str,
-        published_at,
+        published_at: datetime | None,
         raw_text: str | None,
         content_hash: str,
         status: str = "new",
     ) -> SourceItem | None:
         existing = await self.get_by_external_id(source_id, external_id)
         if existing:
-            return existing
+            return None
         existing = await self.get_by_link(source_id, link)
         if existing:
-            return existing
+            return None
 
         item = SourceItem(
             source_id=source_id,
@@ -57,5 +59,5 @@ class SourceItemRepository:
             await self._session.refresh(item)
         except IntegrityError:
             await self._session.rollback()
-            return await self.get_by_external_id(source_id, external_id)
+            return None
         return item

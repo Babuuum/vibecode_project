@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     sqlalchemy_echo: bool = False
     llm_provider: str = "mock"
     llm_api_key: str = ""
+    llm_base_url: str = "http://llm:8000"
     llm_mode: str = Field(default="economy", description="economy|normal")
 
     @property

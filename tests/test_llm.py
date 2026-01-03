@@ -1,8 +1,11 @@
+import logging
+
+import httpx
 import pytest
 
 from autocontent.config import Settings
+from autocontent.integrations.llm_client import LLMRequest, LLMResponse, MockLLMClient, RealLLMClient
 from autocontent.services.llm_gateway import LLMGateway
-from autocontent.integrations.llm_client import LLMRequest, MockLLMClient
 
 
 @pytest.mark.asyncio
@@ -27,3 +30,73 @@ async def test_economy_mode_enforces_max_tokens() -> None:
 
     assert len(resp.content) <= settings.llm_max_tokens
     assert len(resp.content) <= 50
+
+
+@pytest.mark.asyncio
+async def test_mock_llm_deterministic_without_seed() -> None:
+    client = MockLLMClient(default_max_tokens=6)
+    req = LLMRequest(prompt="hello")
+
+    resp1 = await client.generate(req)
+    resp2 = await client.generate(req)
+
+    assert resp1.content == resp2.content
+    assert resp1.tokens_estimated == resp2.tokens_estimated
+
+
+class _CapturingLLMClient:
+    def __init__(self) -> None:
+        self.requests: list[LLMRequest] = []
+
+    async def generate(self, request: LLMRequest) -> LLMResponse:
+        self.requests.append(request)
+        return LLMResponse(content="x" * 20, tokens_estimated=20)
+
+
+@pytest.mark.asyncio
+async def test_gateway_enforces_max_post_len_after_client() -> None:
+    client = _CapturingLLMClient()
+    settings = Settings(llm_mode="normal")
+    gateway = LLMGateway(settings=settings, client=client)
+
+    resp = await gateway.generate(prompt="hello", max_post_len=5)
+
+    assert client.requests[0].max_tokens == min(settings.llm_max_tokens, 5)
+    assert len(resp.content) == 5
+    assert resp.tokens_estimated <= 5
+
+
+@pytest.mark.asyncio
+async def test_mock_llm_logs_event(caplog: pytest.LogCaptureFixture) -> None:
+    client = MockLLMClient(default_max_tokens=4)
+    caplog.set_level(logging.INFO)
+
+    await client.generate(LLMRequest(prompt="abcd", seed=1))
+
+    assert any(record.event == "llm_call" for record in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_real_llm_retry_and_truncate() -> None:
+    attempts: list[str] = []
+
+    async def flaky_sender(payload: dict) -> str:
+        attempts.append("try")
+        if len(attempts) == 1:
+            raise httpx.TimeoutException("timeout")
+        return payload["prompt"] + "!"
+
+    client = RealLLMClient(
+        base_url="http://llm.local",
+        api_key="key",
+        default_max_tokens=5,
+        max_retries=1,
+        sender=flaky_sender,
+    )
+
+    request = LLMRequest(prompt="hello world")
+    resp = await client.generate(request)
+
+    assert len(attempts) == 2
+    assert resp.content == "hello"
+    assert resp.tokens_estimated >= 1
