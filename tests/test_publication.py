@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 import pytest
 
 from autocontent.integrations.telegram_client import TelegramClient
@@ -5,6 +7,7 @@ from autocontent.repos import (
     ChannelBindingRepository,
     PostDraftRepository,
     ProjectRepository,
+    PublicationLogRepository,
     SourceItemRepository,
     SourceRepository,
     UserRepository,
@@ -131,3 +134,51 @@ async def test_publish_draft_blocked_by_quota(session) -> None:
 
     with pytest.raises(QuotaExceededError):
         await service.publish_draft(draft.id)
+
+
+@pytest.mark.asyncio
+async def test_publication_log_repository_idempotent(session) -> None:
+    user_repo = UserRepository(session)
+    project_repo = ProjectRepository(session)
+    source_repo = SourceRepository(session)
+    item_repo = SourceItemRepository(session)
+    draft_repo = PostDraftRepository(session)
+    log_repo = PublicationLogRepository(session)
+
+    user = await user_repo.create_user(tg_id=299)
+    project = await project_repo.create_project(owner_user_id=user.id, title="PX", tz="UTC")
+    source = await source_repo.create_source(project_id=project.id, url="http://example.com/px")
+    item = await item_repo.create_item(
+        source_id=source.id,
+        external_id="px1",
+        link="http://example.com/px1",
+        title="px title",
+        published_at=None,
+        raw_text="px text",
+        content_hash=compute_content_hash("http://example.com/px1", "px title", "px text"),
+    )
+    assert item is not None
+    draft = await draft_repo.create_draft(
+        project_id=project.id,
+        source_item_id=item.id,
+        template_id=None,
+        text="draft px",
+        draft_hash=draft_repo.compute_draft_hash(project.id, item.id, None, item.raw_text or ""),
+    )
+
+    first = await log_repo.create_log(
+        draft_id=draft.id,
+        status="published",
+        tg_message_id="m1",
+        published_at=datetime.now(timezone.utc),
+    )
+    second = await log_repo.create_log(
+        draft_id=draft.id,
+        status="failed",
+        error_code="late",
+        error_text="should not override",
+    )
+
+    assert first.id == second.id
+    assert second.tg_message_id == "m1"
+    assert second.status == "published"

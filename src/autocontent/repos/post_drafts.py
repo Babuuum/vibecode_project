@@ -27,6 +27,7 @@ class PostDraftRepository:
         if not draft:
             return
         draft.status = status
+        self._session.add(draft)
         await self._session.commit()
         await self._session.refresh(draft)
 
@@ -77,14 +78,6 @@ class PostDraftRepository:
             if existing:
                 return existing
             raise
-
-    async def update_status(self, draft_id: int, status: str) -> None:
-        draft = await self.get_by_id(draft_id)
-        if not draft:
-            return
-        draft.status = status
-        self._session.add(draft)
-        await self._session.commit()
 
     @staticmethod
     def compute_draft_hash(

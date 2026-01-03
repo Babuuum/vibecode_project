@@ -127,19 +127,3 @@ class PublicationLog(Base):
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-
-
-class PublicationLog(Base):
-    __tablename__ = "publication_logs"
-    __table_args__ = (UniqueConstraint("draft_id", name="uq_publication_logs_draft"),)
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    draft_id: Mapped[int] = mapped_column(ForeignKey("post_drafts.id"), nullable=False)
-    scheduled_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    published_at: Mapped[DateTime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
-    tg_message_id: Mapped[str | None] = mapped_column(String(length=128), nullable=True)
-    status: Mapped[str] = mapped_column(String(length=32), nullable=False, default="pending")
-    error_code: Mapped[str | None] = mapped_column(String(length=64), nullable=True)
-    error_text: Mapped[str | None] = mapped_column(Text, nullable=True)
