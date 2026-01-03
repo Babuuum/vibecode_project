@@ -28,7 +28,9 @@ from autocontent.integrations.telegram_client import (
 from autocontent.integrations.task_queue import CeleryTaskQueue, TaskQueue
 from autocontent.services import ChannelBindingService, DraftService, ProjectService, SourceService
 from autocontent.services.channel_binding import ChannelBindingNotFoundError
+from autocontent.services.quota import QuotaExceededError, QuotaService, NoopQuotaService
 from autocontent.services.source_service import DuplicateSourceError
+from autocontent.services.quota import QuotaExceededError
 from autocontent.shared.cooldown import CooldownStore, InMemoryCooldownStore, RedisCooldownStore
 from autocontent.shared.idempotency import IdempotencyStore, InMemoryIdempotencyStore, RedisIdempotencyStore
 from autocontent.config import Settings
@@ -65,12 +67,15 @@ if aioredis:
         _redis_client = aioredis.from_url(Settings().redis_url)
         _cooldown_store: CooldownStore = RedisCooldownStore(_redis_client)
         _publish_store: IdempotencyStore = RedisIdempotencyStore(_redis_client)
+        _quota_service: QuotaService = QuotaService(_redis_client)
     except Exception:
         _cooldown_store = InMemoryCooldownStore()
         _publish_store = InMemoryIdempotencyStore()
+        _quota_service = NoopQuotaService()
 else:  # pragma: no cover
     _cooldown_store = InMemoryCooldownStore()
     _publish_store = InMemoryIdempotencyStore()
+    _quota_service = NoopQuotaService()
 
 
 def _build_keyboard(options: Iterable[str]) -> ReplyKeyboardMarkup:
@@ -296,6 +301,8 @@ async def save_rss_handler(message: Message, state: FSMContext, session: AsyncSe
         )
     except DuplicateSourceError:
         await message.answer("Такой источник уже добавлен.", reply_markup=_build_keyboard(SOURCE_MENU))
+    except QuotaExceededError:
+        await message.answer("Достигнут лимит источников для проекта.", reply_markup=_build_keyboard(SOURCE_MENU))
     except SQLAlchemyError:
         await _handle_db_error(message)
 
@@ -351,6 +358,10 @@ def _resolve_publish_store(store: IdempotencyStore | None) -> IdempotencyStore:
     return store or _publish_store
 
 
+def _resolve_quota_service(quota_service: QuotaService | None) -> QuotaService:
+    return quota_service or _quota_service
+
+
 @router.message(F.text == "Сгенерировать сейчас")
 async def generate_now_handler(
     message: Message,
@@ -373,6 +384,13 @@ async def generate_now_handler(
     item = await service.get_latest_new_item(project_id)
     if not item:
         await message.answer("Нет новых материалов для генерации. Попробуй Fetch now.")
+        return
+
+    quota_service = _resolve_quota_service(None)
+    try:
+        await quota_service.ensure_can_generate(project_id)
+    except QuotaExceededError as exc:
+        await message.answer(str(exc))
         return
 
     cooldown = _resolve_cooldown_store(cooldown_store)
@@ -461,6 +479,13 @@ async def publish_draft_handler(
     draft = await draft_service.get_draft(draft_id)
     if not draft or draft.project_id != project_id:
         await callback.answer("Драфт не найден.")
+        return
+
+    quota_service = _resolve_quota_service(None)
+    try:
+        await quota_service.ensure_can_publish(project_id)
+    except QuotaExceededError as exc:
+        await callback.answer(str(exc))
         return
 
     store = _resolve_publish_store(publish_store)

@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_base_url: str = "http://llm:8000"
     llm_mode: str = Field(default="economy", description="economy|normal")
+    drafts_per_day: int = 20
+    publishes_per_day: int = 20
+    sources_limit: int = 10
 
     @property
     def llm_max_tokens(self) -> int:

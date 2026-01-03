@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from autocontent.config import Settings
 from autocontent.integrations.telegram_client import (
     ChannelForbiddenError,
     ChannelNotFoundError,
@@ -12,6 +13,7 @@ from autocontent.integrations.telegram_client import (
     TransientTelegramError,
 )
 from autocontent.repos import ChannelBindingRepository, PostDraftRepository, PublicationLogRepository
+from autocontent.services.quota import NoopQuotaService, QuotaBackend, QuotaExceededError
 from autocontent.shared.idempotency import IdempotencyStore, InMemoryIdempotencyStore
 
 
@@ -28,6 +30,8 @@ class PublicationService:
         session: AsyncSession,
         telegram_client: TelegramClient,
         idempotency_store: IdempotencyStore | None = None,
+        quota_service: QuotaBackend | None = None,
+        settings: Settings | None = None,
     ) -> None:
         self._drafts = PostDraftRepository(session)
         self._logs = PublicationLogRepository(session)
@@ -35,6 +39,8 @@ class PublicationService:
         self._session = session
         self._telegram_client = telegram_client
         self._idempotency = idempotency_store or InMemoryIdempotencyStore()
+        self._quota = quota_service or NoopQuotaService()
+        self._settings = settings or Settings()
 
     async def publish_draft(self, draft_id: int, max_retries: int = 2) -> PublicationLog:
         key = f"publish:{draft_id}"
@@ -52,6 +58,18 @@ class PublicationService:
         channel = await self._channels.get_by_project_id(draft.project_id)
         if not channel or channel.status != "connected":
             raise PublicationError("Channel not connected")
+
+        try:
+            await self._quota.ensure_can_publish(draft.project_id)
+        except QuotaExceededError as exc:
+            await self._drafts.update_status(draft.id, "failed")
+            await self._logs.create_log(
+                draft_id=draft.id,
+                status="failed",
+                error_code="quota",
+                error_text=str(exc),
+            )
+            raise
 
         attempt = 0
         last_exc: Exception | None = None

@@ -5,6 +5,7 @@ from .llm_gateway import LLMGateway
 from .draft_service import DraftService
 from .source_service import SourceService
 from .publication_service import PublicationService
+from .quota import QuotaService, QuotaExceededError
 
 __all__ = [
     "HealthService",
@@ -14,4 +15,6 @@ __all__ = [
     "LLMGateway",
     "DraftService",
     "PublicationService",
+    "QuotaService",
+    "QuotaExceededError",
 ]

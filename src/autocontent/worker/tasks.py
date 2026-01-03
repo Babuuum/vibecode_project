@@ -6,12 +6,13 @@ from aiogram import Bot
 
 from autocontent.config import Settings
 from autocontent.infrastructure.celery_app import celery_app
-from autocontent.integrations.telegram_client import AiogramTelegramClient
+from autocontent.integrations.telegram_client import AiogramTelegramClient, TransientTelegramError
 from autocontent.services.draft_service import DraftService
 from autocontent.services.publication_service import PublicationService
 from autocontent.services.rss_fetcher import fetch_and_save_source
 from autocontent.shared.db import create_engine_from_settings, create_session_factory
 from autocontent.shared.idempotency import InMemoryIdempotencyStore, RedisIdempotencyStore
+from autocontent.services.quota import QuotaService
 
 try:
     from redis import asyncio as aioredis
@@ -34,27 +35,42 @@ def fetch_source_task(source_id: int) -> None:
 @celery_app.task(name="generate_draft")
 def generate_draft_task(source_item_id: int) -> None:
     async def _run() -> None:
-        engine = create_engine_from_settings()
+        settings = Settings()
+        engine = create_engine_from_settings(settings)
         session_factory = create_session_factory(engine)
+        quota_service = None
+        if aioredis:
+            try:
+                redis_client = aioredis.from_url(settings.redis_url)
+                quota_service = QuotaService(redis_client, settings=settings)
+            except Exception:
+                quota_service = None
         async with session_factory() as session:
-            service = DraftService(session)
+            service = DraftService(session, quota_service=quota_service)
             await service.generate_draft(source_item_id)
         await engine.dispose()
 
     asyncio.run(_run())
 
 
-@celery_app.task(name="publish_draft")
+@celery_app.task(
+    name="publish_draft",
+    autoretry_for=(TransientTelegramError,),
+    retry_backoff=5,
+    retry_kwargs={"max_retries": 3},
+)
 def publish_draft_task(draft_id: int) -> None:
     async def _run() -> None:
         settings = Settings()
         engine = create_engine_from_settings(settings)
         session_factory = create_session_factory(engine)
         idempotency_store = InMemoryIdempotencyStore()
+        quota_service = None
         if aioredis:
             try:
                 redis_client = aioredis.from_url(settings.redis_url)
                 idempotency_store = RedisIdempotencyStore(redis_client)
+                quota_service = QuotaService(redis_client, settings=settings)
             except Exception:
                 pass
 
@@ -65,6 +81,8 @@ def publish_draft_task(draft_id: int) -> None:
                 session=session,
                 telegram_client=telegram_client,
                 idempotency_store=idempotency_store,
+                quota_service=quota_service,
+                settings=settings,
             )
             await service.publish_draft(draft_id)
         await engine.dispose()

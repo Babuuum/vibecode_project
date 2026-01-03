@@ -12,6 +12,7 @@ from autocontent.repos import (
     SourceRepository,
 )
 from autocontent.services.llm_gateway import LLMGateway
+from autocontent.services.quota import NoopQuotaService, QuotaBackend
 from autocontent.shared.text import compute_draft_hash as _compute_draft_hash, normalize_text
 
 
@@ -26,6 +27,7 @@ class DraftService:
         llm_client: LLMClient | None = None,
         settings: Settings | None = None,
         llm_gateway: LLMGateway | None = None,
+        quota_service: QuotaBackend | None = None,
     ) -> None:
         self._session = session
         self._settings = settings or Settings()
@@ -37,6 +39,7 @@ class DraftService:
             self._llm_gateway = llm_gateway
         else:
             self._llm_gateway = LLMGateway(settings=self._settings, client=llm_client)
+        self._quota = quota_service or NoopQuotaService()
 
     async def generate_draft(self, source_item_id: int, template_id: str | None = None) -> PostDraft:
         item = await self._items.get_by_id(source_item_id)
@@ -46,6 +49,8 @@ class DraftService:
         source = await self._sources.get_by_id(item.source_id)
         if not source:
             raise DraftGenerationError("Source not found")
+
+        await self._quota.ensure_can_generate(source.project_id)
 
         settings = await self._settings_repo.get_by_project_id(source.project_id)
         max_post_len = settings.max_post_len if settings else self._settings.llm_max_tokens
@@ -89,9 +94,6 @@ class DraftService:
 
     async def reject_draft(self, draft_id: int) -> None:
         await self.set_status(draft_id, "rejected")
-
-    async def reject_draft(self, draft_id: int) -> None:
-        await self._drafts.update_status(draft_id, "rejected")
 
     async def _extract_facts(self, item: SourceItem) -> str:
         raw_text = normalize_text(item.raw_text or "")
