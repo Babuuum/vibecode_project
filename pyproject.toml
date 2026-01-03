@@ -1,0 +1,71 @@
+[tool.poetry]
+name = "autocontent-tg"
+version = "0.1.0"
+description = "MVP AutoContent Telegram project with FastAPI, aiogram, SQLAlchemy, and Celery."
+authors = ["AutoContent Team <dev@example.com>"]
+package-mode = true
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.115.5"
+uvicorn = { extras = ["standard"], version = "^0.32.1" }
+aiogram = "^3.12.0"
+sqlalchemy = { version = "^2.0.36", extras = ["asyncio"] }
+asyncpg = "^0.30.0"
+alembic = "^1.14.0"
+redis = "^5.2.0"
+celery = { version = "^5.4.0", extras = ["redis"] }
+pydantic-settings = "^2.6.1"
+httpx = "^0.27.2"
+feedparser = "^6.0.11"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.7.3"
+mypy = "^1.13.0"
+pre-commit = "^4.0.1"
+
+[tool.poetry.group.test.dependencies]
+pytest = "^8.3.4"
+pytest-asyncio = "^0.24.0"
+pytest-cov = "^6.0.0"
+httpx = "^0.27.2"
+
+[tool.poetry.scripts]
+autocontent-api = "autocontent.api.main:run"
+autocontent-bot = "autocontent.bot.main:run"
+autocontent-worker = "autocontent.worker.main:run"
+
+[build-system]
+requires = ["poetry-core>=1.9.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "S"]
+ignore = ["S101"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+warn_unused_ignores = true
+disallow_untyped_calls = false
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+plugins = []
+namespace_packages = true
+mypy_path = "src"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "--cov=autocontent --cov-report=term-missing"
+testpaths = ["tests"]
+asyncio_mode = "auto"

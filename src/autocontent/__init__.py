@@ -1,0 +1,3 @@
+"""
+AutoContent TG package bootstrap.
+"""
