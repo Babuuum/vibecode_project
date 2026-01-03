@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autocontent.config import Settings
 from autocontent.domain import PostDraft, SourceItem
-from autocontent.integrations.llm_client import LLMResponse
+from autocontent.integrations.llm_client import LLMClient, LLMResponse
 from autocontent.repos import (
     PostDraftRepository,
     ProjectSettingsRepository,
@@ -14,24 +12,20 @@ from autocontent.repos import (
     SourceRepository,
 )
 from autocontent.services.llm_gateway import LLMGateway
-from autocontent.shared.text import normalize_text
+from autocontent.shared.text import compute_draft_hash as _compute_draft_hash, normalize_text
 
 
 class DraftGenerationError(Exception):
     pass
 
 
-@dataclass
-class DraftContext:
-    source_item: SourceItem
-    facts: str
-    content: str
-    draft: PostDraft
-
-
 class DraftService:
     def __init__(
-        self, session: AsyncSession, llm_gateway: LLMGateway | None = None, settings: Settings | None = None
+        self,
+        session: AsyncSession,
+        llm_client: LLMClient | None = None,
+        settings: Settings | None = None,
+        llm_gateway: LLMGateway | None = None,
     ) -> None:
         self._session = session
         self._settings = settings or Settings()
@@ -39,9 +33,12 @@ class DraftService:
         self._sources = SourceRepository(session)
         self._settings_repo = ProjectSettingsRepository(session)
         self._drafts = PostDraftRepository(session)
-        self._llm = llm_gateway or LLMGateway(settings=self._settings)
+        if llm_gateway:
+            self._llm_gateway = llm_gateway
+        else:
+            self._llm_gateway = LLMGateway(settings=self._settings, client=llm_client)
 
-    async def generate_draft(self, source_item_id: int, template_id: str | None = None) -> DraftContext:
+    async def generate_draft(self, source_item_id: int, template_id: str | None = None) -> PostDraft:
         item = await self._items.get_by_id(source_item_id)
         if not item:
             raise DraftGenerationError("Source item not found")
@@ -66,16 +63,20 @@ class DraftService:
         content = await self._render_post(
             facts=facts, link=item.link, language=language, tone=tone, niche=niche, max_post_len=max_post_len
         )
-        draft_hash = self._drafts.compute_draft_hash(source_item_id=item.id, text=content)
+        draft_hash = compute_draft_hash(
+            project_id=source.project_id,
+            source_item_id=item.id,
+            template_id=template_id,
+            raw_text=item.raw_text or "",
+        )
         draft = await self._drafts.create_draft(
             project_id=source.project_id,
             source_item_id=item.id,
             template_id=template_id,
             text=content,
             draft_hash=draft_hash,
-            status="draft",
         )
-        return DraftContext(source_item=item, facts=facts, content=content, draft=draft)
+        return draft
 
     async def list_drafts(self, project_id: int, limit: int = 10) -> list[PostDraft]:
         return await self._drafts.list_latest(project_id, limit=limit)
@@ -90,7 +91,7 @@ class DraftService:
             "Keep facts short:\n"
             f"{raw_text}"
         )
-        response = await self._llm.generate(prompt=prompt, max_post_len=512)
+        response = await self._llm_gateway.generate(prompt=prompt, max_post_len=512)
         return normalize_text(response.content)
 
     async def _render_post(
@@ -103,14 +104,22 @@ class DraftService:
             f"Link: {link}\n"
             "Return plain text only."
         )
-        response: LLMResponse = await self._llm.generate(
+        response: LLMResponse = await self._llm_gateway.generate(
             prompt=prompt, max_post_len=max_post_len, seed=1
         )
-        content = response.content
+        content = normalize_text(response.content)
         if link not in content:
-            content = f"{content}\n{link}"
+            available_len = max_post_len - len(link) - 1
+            if available_len < 0:
+                available_len = 0
+            if len(content) > available_len:
+                content = content[:available_len]
+            content = f"{content} {link}".strip()
 
-        normalized = normalize_text(content)
-        if len(normalized) > max_post_len:
-            normalized = normalized[:max_post_len]
-        return normalized
+        if len(content) > max_post_len:
+            content = content[:max_post_len]
+        return content
+
+
+def compute_draft_hash(project_id: int, source_item_id: int, template_id: str | None, raw_text: str) -> str:
+    return _compute_draft_hash(project_id, source_item_id, template_id, raw_text)

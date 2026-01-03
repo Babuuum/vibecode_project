@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import hashlib
-
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autocontent.domain import PostDraft
+from autocontent.shared.text import compute_draft_hash as compute_draft_hash_value
 
 
 class PostDraftRepository:
@@ -45,7 +44,7 @@ class PostDraftRepository:
         template_id: str | None,
         text: str,
         draft_hash: str,
-        status: str = "draft",
+        status: str = "new",
     ) -> PostDraft:
         existing = await self.get_by_hash(draft_hash)
         if existing:
@@ -72,6 +71,7 @@ class PostDraftRepository:
             raise
 
     @staticmethod
-    def compute_draft_hash(source_item_id: int, text: str) -> str:
-        payload = f"{source_item_id}|{text}".encode("utf-8")
-        return hashlib.sha256(payload).hexdigest()
+    def compute_draft_hash(
+        project_id: int, source_item_id: int, template_id: str | None, raw_text: str
+    ) -> str:
+        return compute_draft_hash_value(project_id, source_item_id, template_id, raw_text)

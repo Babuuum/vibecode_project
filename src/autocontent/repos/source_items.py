@@ -30,11 +30,6 @@ class SourceItemRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_by_id(self, source_item_id: int) -> SourceItem | None:
-        stmt = select(SourceItem).where(SourceItem.id == source_item_id)
-        result = await self._session.execute(stmt)
-        return result.scalar_one_or_none()
-
     async def create_item(
         self,
         source_id: int,
@@ -43,7 +38,7 @@ class SourceItemRepository:
         title: str,
         published_at: datetime | None,
         raw_text: str | None,
-        facts_cache: str | None,
+        facts_cache: str | None = None,
         content_hash: str,
         status: str = "new",
     ) -> SourceItem | None:

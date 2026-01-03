@@ -13,3 +13,7 @@ def compute_content_hash(*parts: str) -> str:
     normalized_parts = [normalize_text(part) for part in parts]
     payload = "|".join(normalized_parts).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def compute_draft_hash(project_id: int, source_item_id: int, template_id: str | None, raw_text: str) -> str:
+    return compute_content_hash(str(project_id), str(source_item_id), template_id or "", raw_text)

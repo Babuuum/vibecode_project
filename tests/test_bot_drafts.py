@@ -135,7 +135,12 @@ async def test_drafts_list_and_view(session) -> None:
         source_item_id=item.id,
         template_id=None,
         text="draft text http://example.com/2",
-        draft_hash=drafts_repo.compute_draft_hash(item.id, "draft text"),
+        draft_hash=drafts_repo.compute_draft_hash(
+            project_id=project.id,
+            source_item_id=item.id,
+            template_id=None,
+            raw_text=item.raw_text or "",
+        ),
     )
 
     storage = MemoryStorage()
