@@ -14,7 +14,7 @@ class Base(DeclarativeBase):
 
 def create_engine_from_settings(settings: Settings | None = None) -> AsyncEngine:
     settings = settings or Settings()
-    return create_async_engine(settings.postgres_dsn.unicode_string(), echo=settings.sqlalchemy_echo)
+    return create_async_engine(str(settings.postgres_dsn), echo=settings.sqlalchemy_echo)
 
 
 def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:

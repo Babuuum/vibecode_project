@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import Field, PostgresDsn
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,9 +16,9 @@ class Settings(BaseSettings):
     reload: bool = False
     log_level: str = "info"
 
-    postgres_dsn: PostgresDsn = Field(
+    postgres_dsn: str = Field(
         default="postgresql+asyncpg://postgres:postgres@postgres:5432/autocontent",
-        description="Async DSN for the primary Postgres database.",
+        description="Async DB DSN (Postgres or SQLite).",
     )
     redis_url: str = Field(
         default="redis://redis:6379/0",
