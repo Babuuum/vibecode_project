@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -88,3 +88,21 @@ class SourceItemRepository:
         )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def count_by_project(self, project_id: int) -> int:
+        stmt = (
+            select(func.count(SourceItem.id))
+            .join(Source, Source.id == SourceItem.source_id)
+            .where(Source.project_id == project_id)
+        )
+        result = await self._session.execute(stmt)
+        return int(result.scalar_one() or 0)
+
+    async def count_new_by_project(self, project_id: int) -> int:
+        stmt = (
+            select(func.count(SourceItem.id))
+            .join(Source, Source.id == SourceItem.source_id)
+            .where(Source.project_id == project_id, SourceItem.status == "new")
+        )
+        result = await self._session.execute(stmt)
+        return int(result.scalar_one() or 0)

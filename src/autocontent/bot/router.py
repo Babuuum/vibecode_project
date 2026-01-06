@@ -26,6 +26,7 @@ from autocontent.integrations.telegram_client import (
     TelegramClientError,
 )
 from autocontent.integrations.task_queue import CeleryTaskQueue, TaskQueue
+from autocontent.repos import ChannelBindingRepository, ProjectRepository, SourceItemRepository, SourceRepository
 from autocontent.services import ChannelBindingService, DraftService, ProjectService, SourceService
 from autocontent.services.channel_binding import ChannelBindingNotFoundError
 from autocontent.services.quota import (
@@ -65,6 +66,7 @@ DRAFT_MENU = ["Сгенерировать сейчас", "Черновики"]
 SOURCE_MENU = ["Добавить RSS", "Список источников", "Fetch now"] + DRAFT_MENU + CHANNEL_MENU
 SOURCE_STATUS_MENU = ["Статус источников"] + SOURCE_MENU
 COOLDOWN_TTL_SECONDS = 45
+STATUS_DRAFTS_LIMIT = 5
 
 _default_task_queue: TaskQueue = CeleryTaskQueue()
 if aioredis:
@@ -93,6 +95,43 @@ def _build_keyboard(options: Iterable[str]) -> ReplyKeyboardMarkup:
 
 async def _handle_db_error(message: Message) -> None:
     await message.answer("Сервис временно недоступен. Попробуйте позже.")
+
+
+def _format_onboarding_checklist() -> str:
+    return (
+        "Чеклист онбординга:\n"
+        "1) /start — создать проект\n"
+        "2) «Добавить RSS» — добавить источники\n"
+        "3) «Подключить канал» — указать канал\n"
+        "4) «Проверить» — проверить доступ к каналу\n"
+        "5) «Fetch now» — подтянуть материалы\n"
+        "6) «Сгенерировать сейчас» — получить драфт\n"
+        "7) «Черновики» — открыть и опубликовать"
+    )
+
+
+async def _build_next_steps(
+    project_id: int,
+    session: AsyncSession,
+    sources: list,
+    channel_binding,
+    drafts: list,
+) -> list[str]:
+    steps: list[str] = []
+    if not channel_binding or channel_binding.status != "connected":
+        steps.append("Подключи канал: «Подключить канал» → «Проверить».")
+    if not sources:
+        steps.append("Добавь RSS-источник: «Добавить RSS».")
+    item_repo = SourceItemRepository(session)
+    items_total = await item_repo.count_by_project(project_id)
+    items_new = await item_repo.count_new_by_project(project_id)
+    if sources and items_total == 0:
+        steps.append("Сделай первичный fetch: «Fetch now».")
+    if items_new == 0 and items_total > 0:
+        steps.append("Нет новых материалов — запусти «Fetch now» позже.")
+    if not drafts and items_total > 0:
+        steps.append("Сгенерируй драфт: «Сгенерировать сейчас».")
+    return steps
 
 
 @router.message(Command("start"))
@@ -168,6 +207,86 @@ async def tone_handler(message: Message, state: FSMContext, session: AsyncSessio
         )
     except SQLAlchemyError:
         await _handle_db_error(message)
+
+
+@router.message(Command("help"))
+async def help_handler(message: Message) -> Any:
+    await message.answer(_format_onboarding_checklist(), reply_markup=_build_keyboard(SOURCE_MENU))
+
+
+@router.message(Command("status"))
+async def status_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
+    project_id = await _resolve_project_id(message, state, session)
+    if not project_id:
+        await message.answer("Проект не найден. Начни с /start.")
+        return
+
+    project_repo = ProjectRepository(session)
+    source_repo = SourceRepository(session)
+    channel_repo = ChannelBindingRepository(session)
+    drafts_service = DraftService(session)
+
+    project = await project_repo.get_by_id(project_id)
+    if not project:
+        await message.answer("Проект не найден. Начни с /start.")
+        return
+
+    channel_binding = await channel_repo.get_by_project_id(project_id)
+    sources = await source_repo.list_by_project(project_id)
+    drafts = await drafts_service.list_drafts(project_id, limit=STATUS_DRAFTS_LIMIT)
+
+    settings = Settings()
+    lines = [
+        "Статус проекта:",
+        f"Проект: {project.title} [{project.status}] tz={project.tz}",
+    ]
+
+    if channel_binding:
+        channel_label = channel_binding.channel_username or channel_binding.channel_id
+        lines.append(f"Канал: {channel_label} [{channel_binding.status}]")
+    else:
+        lines.append("Канал: не подключен")
+
+    if sources:
+        status_counts: dict[str, int] = {}
+        for src in sources:
+            status_counts[src.status] = status_counts.get(src.status, 0) + 1
+        status_part = ", ".join(f"{key}={val}" for key, val in sorted(status_counts.items()))
+        lines.append(f"Источники: {len(sources)} ({status_part})")
+    else:
+        lines.append("Источники: 0")
+
+    item_repo = SourceItemRepository(session)
+    items_total = await item_repo.count_by_project(project_id)
+    items_new = await item_repo.count_new_by_project(project_id)
+    lines.append(f"Материалы: всего={items_total}, новых={items_new}")
+    lines.append(
+        "Квоты: "
+        f"драфты/день={settings.drafts_per_day}, "
+        f"публикации/день={settings.publishes_per_day}, "
+        f"источники={settings.sources_limit}"
+    )
+
+    if drafts:
+        lines.append("Последние драфты:")
+        for draft in drafts:
+            preview = draft.text.replace("\n", " ")[:80]
+            lines.append(f"{draft.id} [{draft.status}] {preview}")
+    else:
+        lines.append("Последние драфты: нет")
+
+    next_steps = await _build_next_steps(
+        project_id=project_id,
+        session=session,
+        sources=sources,
+        channel_binding=channel_binding,
+        drafts=drafts,
+    )
+    if next_steps:
+        lines.append("Следующие шаги:")
+        lines.extend(f"- {step}" for step in next_steps)
+
+    await message.answer("\n".join(lines), reply_markup=_build_keyboard(SOURCE_MENU))
 
 
 async def _resolve_project_id(message: Message, state: FSMContext, session: AsyncSession) -> int | None:
@@ -266,13 +385,13 @@ async def channel_check_handler(
         await service.check_binding(project_id)
         await message.answer("Канал подключен и доступен ✅", reply_markup=_build_keyboard(CHANNEL_MENU))
     except ChannelBindingNotFoundError:
-        await message.answer("Сначала подключите канал через кнопку «Подключить канал».")
+        await message.answer("Канал не подключен. Нажмите «Подключить канал».")
     except ChannelForbiddenError:
-        await message.answer("Бот не может писать в канал. Проверь права администратора.")
+        await message.answer("Нет прав писать в канал. Добавьте бота админом с правом писать.")
     except ChannelNotFoundError:
-        await message.answer("Канал не найден или недоступен. Проверь имя/ID.")
-    except TelegramClientError as exc:
-        await message.answer(str(exc))
+        await message.answer("Канал не найден. Проверь @username/ID и что бот добавлен.")
+    except TelegramClientError:
+        await message.answer("Telegram недоступен. Попробуйте позже.")
     except SQLAlchemyError:
         await _handle_db_error(message)
 
@@ -365,10 +484,15 @@ async def fetch_now_handler(message: Message, state: FSMContext, session: AsyncS
     service = SourceService(session)
     sources = await service.list_sources(project_id)
     if not sources:
-        await message.answer("Нет источников для обновления.")
+        await message.answer("Нет источников для обновления. Добавьте RSS источник.")
         return
 
-    total_saved = await service.fetch_all_for_project(project_id)
+    try:
+        total_saved = await service.fetch_all_for_project(project_id)
+    except Exception:  # noqa: BLE001
+        await message.answer("Не удалось обновить источники. Попробуйте позже.")
+        return
+
     await message.answer(
         f"Fetch завершен. Новых записей: {total_saved}", reply_markup=_build_keyboard(SOURCE_MENU)
     )
@@ -412,7 +536,7 @@ async def generate_now_handler(
 
     item = await service.get_latest_new_item(project_id)
     if not item:
-        await message.answer("Нет новых материалов для генерации. Попробуй Fetch now.")
+        await message.answer("Нет новых материалов. Запустите «Fetch now» и попробуйте позже.")
         return
 
     quota_service = _resolve_quota_service(quota_service)

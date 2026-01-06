@@ -59,15 +59,18 @@ class DraftService:
         tone = settings.tone if settings else "friendly"
         niche = settings.niche if settings else "general"
 
-        facts = item.facts_cache
-        if not facts:
-            facts = await self._extract_facts(item)
-            await self._items.update_facts_cache(item.id, facts)
-            item.facts_cache = facts
+        try:
+            facts = item.facts_cache
+            if not facts:
+                facts = await self._extract_facts(item)
+                await self._items.update_facts_cache(item.id, facts)
+                item.facts_cache = facts
 
-        content = await self._render_post(
-            facts=facts, link=item.link, language=language, tone=tone, niche=niche, max_post_len=max_post_len
-        )
+            content = await self._render_post(
+                facts=facts, link=item.link, language=language, tone=tone, niche=niche, max_post_len=max_post_len
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise DraftGenerationError("LLM недоступен. Попробуйте позже.") from exc
         draft_hash = compute_draft_hash(
             project_id=source.project_id,
             source_item_id=item.id,
