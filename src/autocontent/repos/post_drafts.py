@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autocontent.domain import PostDraft
 from autocontent.shared.text import compute_draft_hash as compute_draft_hash_value
+from autocontent.domain import SourceItem
 
 
 class PostDraftRepository:
@@ -21,6 +24,27 @@ class PostDraftRepository:
         stmt = select(PostDraft).where(PostDraft.id == draft_id)
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def has_recent_hash(self, draft_hash: str, since: datetime) -> bool:
+        stmt = select(PostDraft).where(
+            PostDraft.draft_hash == draft_hash,
+            PostDraft.created_at >= since,
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none() is not None
+
+    async def has_recent_content_hash(self, content_hash: str, since: datetime) -> bool:
+        stmt = (
+            select(PostDraft)
+            .join(SourceItem, SourceItem.id == PostDraft.source_item_id)
+            .where(
+                SourceItem.content_hash == content_hash,
+                PostDraft.created_at >= since,
+            )
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none() is not None
 
     async def update_status(self, draft_id: int, status: str) -> None:
         draft = await self.get_by_id(draft_id)

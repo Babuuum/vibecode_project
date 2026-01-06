@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     source_fail_threshold: int = 3
     max_generate_per_fetch: int = 5
     generate_lock_ttl: int = 60
+    duplicate_window_days: int = 7
 
     @property
     def llm_max_tokens(self) -> int:

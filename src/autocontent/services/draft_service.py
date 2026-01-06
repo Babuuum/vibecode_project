@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autocontent.config import Settings
@@ -59,6 +61,18 @@ class DraftService:
         tone = settings.tone if settings else "friendly"
         niche = settings.niche if settings else "general"
 
+        since = datetime.now(timezone.utc) - timedelta(days=self._settings.duplicate_window_days)
+        draft_hash = compute_draft_hash(
+            project_id=source.project_id,
+            source_item_id=item.id,
+            template_id=template_id,
+            raw_text=item.raw_text or "",
+        )
+        if await self._drafts.has_recent_hash(draft_hash, since):
+            raise DraftGenerationError("Duplicate draft detected")
+        if await self._drafts.has_recent_content_hash(item.content_hash, since):
+            raise DraftGenerationError("Duplicate content detected")
+
         try:
             facts = item.facts_cache
             if not facts:
@@ -71,12 +85,6 @@ class DraftService:
             )
         except Exception as exc:  # noqa: BLE001
             raise DraftGenerationError("LLM недоступен. Попробуйте позже.") from exc
-        draft_hash = compute_draft_hash(
-            project_id=source.project_id,
-            source_item_id=item.id,
-            template_id=template_id,
-            raw_text=item.raw_text or "",
-        )
         draft = await self._drafts.create_draft(
             project_id=source.project_id,
             source_item_id=item.id,
