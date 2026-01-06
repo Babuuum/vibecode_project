@@ -34,12 +34,12 @@ class SourceService:
         self._task_queue = task_queue
         self._lock_store = lock_store
 
-    async def add_source(self, project_id: int, url: str) -> None:
+    async def add_source(self, project_id: int, url: str, type: str = "rss") -> None:
         existing_sources = await self._repo.list_by_project(project_id)
         if len(existing_sources) >= self._settings.sources_limit:
             raise QuotaExceededError("Превышен лимит источников для проекта.")
         try:
-            await self._repo.create_source(project_id=project_id, url=url)
+            await self._repo.create_source(project_id=project_id, url=url, type=type)
         except IntegrityError as exc:
             await self._session.rollback()
             raise DuplicateSourceError("Source already exists for this project") from exc

@@ -4,12 +4,15 @@ from datetime import datetime, timezone
 from typing import Iterable
 
 import feedparser
+import httpx
+from bs4 import BeautifulSoup
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autocontent.domain import Source
 from autocontent.config import Settings
 from autocontent.integrations.rss_client import HttpRSSClient, RSSClient
 from autocontent.integrations.task_queue import TaskQueue
+from autocontent.integrations.url_client import HttpURLClient, URLClient
 from autocontent.repos import SourceItemRepository, SourceRepository
 from autocontent.shared.lock import InMemoryLockStore, LockStore
 from autocontent.shared.text import compute_content_hash, normalize_text
@@ -33,8 +36,10 @@ async def fetch_and_save_source(
     task_queue: TaskQueue | None = None,
     lock_store: LockStore | None = None,
     max_items_per_run: int | None = None,
+    url_client: URLClient | None = None,
 ) -> tuple[Source | None, int]:
     rss_client = rss_client or HttpRSSClient()
+    url_client = url_client or HttpURLClient()
 
     source_repo = SourceRepository(session)
     source_item_repo = SourceItemRepository(session)
@@ -44,24 +49,23 @@ async def fetch_and_save_source(
         return None, 0
 
     try:
-        raw_content = await rss_client.fetch(source.url)
-        feed = feedparser.parse(raw_content)
         saved = 0
         created_items: list[int] = []
-        for entry in _extract_entries(feed):
-            link = entry.get("link") or ""
-            title = entry.get("title") or "(no title)"
-            external_id = entry.get("id") or link or title
-            published_at = _parse_datetime(entry)
-            raw_text = normalize_text(entry.get("summary") or entry.get("description") or "")
-            content_hash = compute_content_hash(link, title, raw_text)
-
+        if source.type == "url":
+            settings = Settings()
+            html = await url_client.fetch(source.url, settings.url_fetch_timeout_sec)
+            if len(html) > settings.url_max_chars:
+                html = html[: settings.url_max_chars]
+            title, raw_text = extract_text_from_html(html, settings.url_text_max_chars)
+            link = source.url
+            external_id = link
+            content_hash = compute_content_hash(link, title or "", raw_text)
             item = await source_item_repo.create_item(
                 source_id=source.id,
                 external_id=external_id,
                 link=link,
-                title=title,
-                published_at=published_at,
+                title=title or "(no title)",
+                published_at=None,
                 raw_text=raw_text,
                 facts_cache=None,
                 content_hash=content_hash,
@@ -69,6 +73,30 @@ async def fetch_and_save_source(
             if item:
                 saved += 1
                 created_items.append(item.id)
+        else:
+            raw_content = await rss_client.fetch(source.url)
+            feed = feedparser.parse(raw_content)
+            for entry in _extract_entries(feed):
+                link = entry.get("link") or ""
+                title = entry.get("title") or "(no title)"
+                external_id = entry.get("id") or link or title
+                published_at = _parse_datetime(entry)
+                raw_text = normalize_text(entry.get("summary") or entry.get("description") or "")
+                content_hash = compute_content_hash(link, title, raw_text)
+
+                item = await source_item_repo.create_item(
+                    source_id=source.id,
+                    external_id=external_id,
+                    link=link,
+                    title=title,
+                    published_at=published_at,
+                    raw_text=raw_text,
+                    facts_cache=None,
+                    content_hash=content_hash,
+                )
+                if item:
+                    saved += 1
+                    created_items.append(item.id)
 
         await source_repo.update_status(
             source.id, status="ok", last_error=None, consecutive_failures=0
@@ -82,6 +110,12 @@ async def fetch_and_save_source(
                 for item_id in created_items[:limit]:
                     task_queue.enqueue_generate_draft(item_id)
         return source, saved
+    except httpx.TimeoutException:
+        await _handle_fetch_error(source, source_repo, "timeout")
+        return source, 0
+    except httpx.HTTPStatusError as exc:
+        await _handle_fetch_error(source, source_repo, f"HTTP {exc.response.status_code}")
+        return source, 0
     except Exception as exc:  # noqa: BLE001
         new_failures = (source.consecutive_failures or 0) + 1
         status = "error"
@@ -94,3 +128,28 @@ async def fetch_and_save_source(
             consecutive_failures=new_failures,
         )
         return source, 0
+
+
+async def _handle_fetch_error(source: Source, repo: SourceRepository, message: str) -> None:
+    new_failures = (source.consecutive_failures or 0) + 1
+    status = "error"
+    if new_failures >= Settings().source_fail_threshold:
+        status = "broken"
+    await repo.update_status(
+        source.id,
+        status=status,
+        last_error=message,
+        consecutive_failures=new_failures,
+    )
+
+
+def extract_text_from_html(html: str, max_chars: int) -> tuple[str | None, str]:
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+    title = soup.title.string.strip() if soup.title and soup.title.string else None
+    text = soup.get_text(separator=" ", strip=True)
+    normalized = normalize_text(text)
+    if len(normalized) > max_chars:
+        normalized = normalized[:max_chars]
+    return title, normalized

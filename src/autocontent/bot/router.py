@@ -84,7 +84,7 @@ AUTPOST_MENU = [
     "Назад",
 ]
 SLOT_PRESETS = ["10:00,14:00,18:00", "09:00,12:00,15:00,18:00", "08:00,12:00,20:00"]
-SOURCE_MENU = ["Добавить RSS", "Список источников", "Fetch now", "Автопостинг"] + DRAFT_MENU + CHANNEL_MENU
+SOURCE_MENU = ["Добавить RSS", "Добавить URL", "Список источников", "Fetch now", "Автопостинг"] + DRAFT_MENU + CHANNEL_MENU
 SOURCE_STATUS_MENU = ["Статус источников"] + SOURCE_MENU
 COOLDOWN_TTL_SECONDS = 45
 STATUS_DRAFTS_LIMIT = 5
@@ -702,6 +702,40 @@ async def save_rss_handler(message: Message, state: FSMContext, session: AsyncSe
     except SQLAlchemyError:
         await _handle_db_error(message)
 
+
+@router.message(F.text == "Добавить URL")
+async def add_url_handler(message: Message, state: FSMContext) -> Any:
+    await state.set_state(SourceStates.waiting_page_url)
+    await message.answer("Пришли URL страницы для добавления.", reply_markup=_build_keyboard(SOURCE_MENU))
+
+
+@router.message(SourceStates.waiting_page_url)
+async def save_url_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
+    url = (message.text or "").strip()
+    if not url.startswith("http"):
+        await message.answer("Нужен корректный URL, начинающийся с http.")
+        return
+
+    project_id = await _resolve_project_id(message, state, session)
+    if not project_id:
+        await message.answer("Проект не найден, начните /start.")
+        await state.clear()
+        return
+
+    service = SourceService(session)
+    try:
+        await service.add_source(project_id=project_id, url=url, type="url")
+        await state.clear()
+        await message.answer(
+            "Источник добавлен. Используй «Fetch now» для проверки.",
+            reply_markup=_build_keyboard(SOURCE_STATUS_MENU),
+        )
+    except DuplicateSourceError:
+        await message.answer("Такой источник уже добавлен.", reply_markup=_build_keyboard(SOURCE_MENU))
+    except QuotaExceededError:
+        await message.answer("Достигнут лимит источников для проекта.", reply_markup=_build_keyboard(SOURCE_MENU))
+    except SQLAlchemyError:
+        await _handle_db_error(message)
 
 @router.message(F.text == "Список источников")
 async def list_sources_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:

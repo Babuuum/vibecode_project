@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     max_generate_per_fetch: int = 5
     generate_lock_ttl: int = 60
     duplicate_window_days: int = 7
+    url_fetch_timeout_sec: int = 10
+    url_max_chars: int = 200000
+    url_text_max_chars: int = 8000
 
     @property
     def llm_max_tokens(self) -> int:
