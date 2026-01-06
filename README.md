@@ -38,5 +38,21 @@ make up
 # API: http://localhost:8000/healthz
 ```
 
+## Production
+Use the production compose file and the update script:
+```bash
+./scripts/update_prod.sh
+```
+
+Postgres backup (host cron):
+```bash
+./scripts/backup_postgres.sh
+```
+
+Example cron (daily at 03:15):
+```
+15 3 * * * /bin/bash /path/to/project/scripts/backup_postgres.sh >> /path/to/project/backups/cron.log 2>&1
+```
+
 ## Migrations
 - Placeholder: add Alembic revisions under `migrations/versions/` and run `make migrate`.

@@ -17,3 +17,4 @@ coverage.*
 .coverage*
 *.log
 AutoContent_TG_Project_Pack_v3.pdf
+backups/

@@ -4,7 +4,14 @@ from celery import Celery
 
 from autocontent.config import Settings
 
+try:
+    import sentry_sdk
+except Exception:  # pragma: no cover
+    sentry_sdk = None
+
 settings = Settings()
+if sentry_sdk and settings.sentry_dsn:
+    sentry_sdk.init(dsn=settings.sentry_dsn, environment=settings.environment)
 
 celery_app = Celery(
     "autocontent",

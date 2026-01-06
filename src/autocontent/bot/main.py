@@ -12,9 +12,16 @@ from autocontent.config import Settings
 from autocontent.integrations.telegram_client import AiogramTelegramClient
 from autocontent.shared.db import create_engine_from_settings, create_session_factory
 
+try:
+    import sentry_sdk
+except Exception:  # pragma: no cover
+    sentry_sdk = None
+
 
 async def start_bot(settings: Settings | None = None) -> None:
     settings = settings or Settings()
+    if sentry_sdk and settings.sentry_dsn:
+        sentry_sdk.init(dsn=settings.sentry_dsn, environment=settings.environment)
     bot = Bot(settings.bot_token, parse_mode="HTML")
 
     engine = create_engine_from_settings(settings)
