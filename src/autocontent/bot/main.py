@@ -5,12 +5,12 @@ import asyncio
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from src.autocontent.bot.router import router
-from src.autocontent.bot.session_middleware import SessionMiddleware
-from src.autocontent.bot.telegram_client_middleware import TelegramClientMiddleware
-from src.autocontent.config import Settings
-from src.autocontent.integrations.telegram_client import AiogramTelegramClient
-from src.autocontent.shared.db import create_engine_from_settings, create_session_factory
+from autocontent.bot.router import router
+from autocontent.bot.session_middleware import SessionMiddleware
+from autocontent.bot.telegram_client_middleware import TelegramClientMiddleware
+from autocontent.config import Settings
+from autocontent.integrations.telegram_client import AiogramTelegramClient
+from autocontent.shared.db import create_engine_from_settings, create_session_factory
 
 try:
     import sentry_sdk

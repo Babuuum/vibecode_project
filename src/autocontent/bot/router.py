@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any, Iterable
 
 from aiogram import F, Router
@@ -18,27 +19,33 @@ from aiogram.types import (
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.autocontent.bot.source_states import SourceStates
-from src.autocontent.integrations.telegram_client import (
+from autocontent.bot.source_states import SourceStates
+from autocontent.integrations.telegram_client import (
     ChannelForbiddenError,
     ChannelNotFoundError,
     TelegramClient,
     TelegramClientError,
 )
-from src.autocontent.integrations.task_queue import CeleryTaskQueue, TaskQueue
-from src.autocontent.repos import ChannelBindingRepository, ProjectRepository, SourceItemRepository, SourceRepository
-from src.autocontent.services import ChannelBindingService, DraftService, ProjectService, SourceService
-from src.autocontent.services.channel_binding import ChannelBindingNotFoundError
-from src.autocontent.services.quota import (
+from autocontent.integrations.task_queue import CeleryTaskQueue, TaskQueue
+from autocontent.repos import (
+    ChannelBindingRepository,
+    ProjectRepository,
+    ScheduleRepository,
+    SourceItemRepository,
+    SourceRepository,
+)
+from autocontent.services import ChannelBindingService, DraftService, ProjectService, SourceService
+from autocontent.services.channel_binding import ChannelBindingNotFoundError
+from autocontent.services.quota import (
     NoopQuotaService,
     QuotaBackend,
     QuotaExceededError,
     QuotaService,
 )
-from src.autocontent.services.source_service import DuplicateSourceError
-from src.autocontent.shared.cooldown import CooldownStore, InMemoryCooldownStore, RedisCooldownStore
-from src.autocontent.shared.idempotency import IdempotencyStore, InMemoryIdempotencyStore, RedisIdempotencyStore
-from src.autocontent.config import Settings
+from autocontent.services.source_service import DuplicateSourceError
+from autocontent.shared.cooldown import CooldownStore, InMemoryCooldownStore, RedisCooldownStore
+from autocontent.shared.idempotency import IdempotencyStore, InMemoryIdempotencyStore, RedisIdempotencyStore
+from autocontent.config import Settings
 
 try:
     from redis import asyncio as aioredis
@@ -58,15 +65,31 @@ class ChannelStates(StatesGroup):
     waiting_channel = State()
 
 
+class ScheduleStates(StatesGroup):
+    waiting_slots = State()
+    waiting_limit = State()
+
+
 LANGUAGE_OPTIONS = ["en", "ru"]
 NICHE_OPTIONS = ["tech", "marketing", "lifestyle"]
 TONE_OPTIONS = ["friendly", "formal", "casual"]
 CHANNEL_MENU = ["Настройки", "Подключить канал", "Проверить"]
 DRAFT_MENU = ["Сгенерировать сейчас", "Черновики"]
-SOURCE_MENU = ["Добавить RSS", "Список источников", "Fetch now"] + DRAFT_MENU + CHANNEL_MENU
+AUTPOST_MENU = [
+    "Автопостинг: Вкл",
+    "Автопостинг: Выкл",
+    "Автопостинг: Показать",
+    "Автопостинг: Слоты",
+    "Автопостинг: Лимит",
+    "Назад",
+]
+SLOT_PRESETS = ["10:00,14:00,18:00", "09:00,12:00,15:00,18:00", "08:00,12:00,20:00"]
+SOURCE_MENU = ["Добавить RSS", "Список источников", "Fetch now", "Автопостинг"] + DRAFT_MENU + CHANNEL_MENU
 SOURCE_STATUS_MENU = ["Статус источников"] + SOURCE_MENU
 COOLDOWN_TTL_SECONDS = 45
 STATUS_DRAFTS_LIMIT = 5
+MAX_SLOTS = 6
+DEFAULT_SLOTS = ["10:00", "14:00", "18:00"]
 
 _default_task_queue: TaskQueue = CeleryTaskQueue()
 if aioredis:
@@ -132,6 +155,45 @@ async def _build_next_steps(
     if not drafts and items_total > 0:
         steps.append("Сгенерируй драфт: «Сгенерировать сейчас».")
     return steps
+
+
+def _parse_slots(raw_text: str) -> list[str] | None:
+    raw_slots = [item.strip() for item in raw_text.split(",") if item.strip()]
+    if not raw_slots:
+        return None
+    slots: list[str] = []
+    seen: set[str] = set()
+    for item in raw_slots:
+        parts = item.split(":")
+        if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
+            return None
+        hour = int(parts[0])
+        minute = int(parts[1])
+        if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+            return None
+        slot = f"{hour:02d}:{minute:02d}"
+        if slot not in seen:
+            seen.add(slot)
+            slots.append(slot)
+    if len(slots) > MAX_SLOTS:
+        return None
+    slots.sort()
+    return slots
+
+
+def _load_slots(slots_json: str) -> list[str]:
+    try:
+        slots = json.loads(slots_json)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(slots, list):
+        return []
+    return [slot for slot in slots if isinstance(slot, str)]
+
+
+def _format_slots(slots_json: str) -> str:
+    normalized = _load_slots(slots_json)
+    return ", ".join(normalized) if normalized else "-"
 
 
 @router.message(Command("start"))
@@ -332,6 +394,216 @@ async def settings_handler(message: Message, state: FSMContext, session: AsyncSe
         )
     except SQLAlchemyError:
         await _handle_db_error(message)
+
+
+@router.message(F.text == "Автопостинг")
+async def autopost_menu_handler(message: Message) -> Any:
+    await message.answer("Меню автопостинга:", reply_markup=_build_keyboard(AUTPOST_MENU))
+
+
+@router.message(F.text == "Назад")
+async def autopost_back_handler(message: Message) -> Any:
+    await message.answer("Главное меню.", reply_markup=_build_keyboard(SOURCE_MENU))
+
+
+@router.message(F.text == "Автопостинг: Показать")
+async def autopost_show_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
+    project_id = await _resolve_project_id(message, state, session)
+    if not project_id:
+        await message.answer("Проект не найден. Начни с /start.")
+        return
+
+    schedule_repo = ScheduleRepository(session)
+    schedule = await schedule_repo.get_by_project_id(project_id)
+    if not schedule:
+        await message.answer(
+            "Расписание не задано. Используй «Автопостинг: Слоты».",
+            reply_markup=_build_keyboard(AUTPOST_MENU),
+        )
+        return
+
+    await message.answer(
+        "Текущее расписание:\n"
+        f"Включено: {schedule.enabled}\n"
+        f"Часовой пояс: {schedule.tz}\n"
+        f"Слоты: {_format_slots(schedule.slots_json)}\n"
+        f"Лимит в день: {schedule.per_day_limit}",
+        reply_markup=_build_keyboard(AUTPOST_MENU),
+    )
+
+
+@router.message(F.text == "Автопостинг: Вкл")
+async def autopost_enable_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
+    project_id = await _resolve_project_id(message, state, session)
+    if not project_id:
+        await message.answer("Проект не найден. Начни с /start.")
+        return
+
+    project_repo = ProjectRepository(session)
+    project = await project_repo.get_by_id(project_id)
+    if not project:
+        await message.answer("Проект не найден. Начни с /start.")
+        return
+
+    schedule_repo = ScheduleRepository(session)
+    schedule = await schedule_repo.get_by_project_id(project_id)
+    slots = DEFAULT_SLOTS
+    per_day_limit = 1
+    enabled = True
+    if schedule:
+        current_slots = _load_slots(schedule.slots_json)
+        slots = current_slots or DEFAULT_SLOTS
+        per_day_limit = schedule.per_day_limit
+        await schedule_repo.update_schedule(
+            schedule, tz=project.tz, slots=slots, per_day_limit=per_day_limit, enabled=enabled
+        )
+    else:
+        await schedule_repo.create_schedule(
+            project_id=project_id,
+            tz=project.tz,
+            slots=slots,
+            per_day_limit=per_day_limit,
+            enabled=enabled,
+        )
+
+    await message.answer(
+        "Автопостинг включен.",
+        reply_markup=_build_keyboard(AUTPOST_MENU),
+    )
+
+
+@router.message(F.text == "Автопостинг: Выкл")
+async def autopost_disable_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
+    project_id = await _resolve_project_id(message, state, session)
+    if not project_id:
+        await message.answer("Проект не найден. Начни с /start.")
+        return
+
+    schedule_repo = ScheduleRepository(session)
+    schedule = await schedule_repo.get_by_project_id(project_id)
+    if not schedule:
+        await message.answer("Расписание не задано.", reply_markup=_build_keyboard(AUTPOST_MENU))
+        return
+
+    await schedule_repo.update_schedule(
+        schedule,
+        tz=schedule.tz,
+        slots=_load_slots(schedule.slots_json),
+        per_day_limit=schedule.per_day_limit,
+        enabled=False,
+    )
+    await message.answer("Автопостинг выключен.", reply_markup=_build_keyboard(AUTPOST_MENU))
+
+
+@router.message(F.text == "Автопостинг: Слоты")
+async def autopost_slots_handler(message: Message, state: FSMContext) -> Any:
+    await state.set_state(ScheduleStates.waiting_slots)
+    presets = SLOT_PRESETS + ["Назад"]
+    await message.answer(
+        "Введи слоты в формате HH:MM через запятую (до 6).",
+        reply_markup=_build_keyboard(presets),
+    )
+
+
+@router.message(ScheduleStates.waiting_slots)
+async def autopost_slots_save_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
+    text = (message.text or "").strip()
+    if text == "Назад":
+        await state.set_state(None)
+        await message.answer("Меню автопостинга.", reply_markup=_build_keyboard(AUTPOST_MENU))
+        return
+
+    slots = _parse_slots(text)
+    if not slots:
+        await message.answer(
+            "Неверный формат. Пример: 10:00,14:00,18:00 (до 6 слотов).",
+            reply_markup=_build_keyboard(SLOT_PRESETS + ["Назад"]),
+        )
+        return
+
+    project_id = await _resolve_project_id(message, state, session)
+    if not project_id:
+        await message.answer("Проект не найден. Начни с /start.")
+        return
+
+    project_repo = ProjectRepository(session)
+    project = await project_repo.get_by_id(project_id)
+    if not project:
+        await message.answer("Проект не найден. Начни с /start.")
+        return
+
+    schedule_repo = ScheduleRepository(session)
+    schedule = await schedule_repo.get_by_project_id(project_id)
+    if schedule:
+        await schedule_repo.update_schedule(
+            schedule,
+            tz=project.tz,
+            slots=slots,
+            per_day_limit=schedule.per_day_limit,
+            enabled=schedule.enabled,
+        )
+    else:
+        await schedule_repo.create_schedule(
+            project_id=project_id,
+            tz=project.tz,
+            slots=slots,
+            per_day_limit=1,
+            enabled=False,
+        )
+
+    await state.set_state(None)
+    await message.answer("Слоты сохранены.", reply_markup=_build_keyboard(AUTPOST_MENU))
+
+
+@router.message(F.text == "Автопостинг: Лимит")
+async def autopost_limit_handler(message: Message, state: FSMContext) -> Any:
+    await state.set_state(ScheduleStates.waiting_limit)
+    await message.answer("Укажи лимит публикаций в день (1-20).")
+
+
+@router.message(ScheduleStates.waiting_limit)
+async def autopost_limit_save_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
+    raw = (message.text or "").strip()
+    if not raw.isdigit():
+        await message.answer("Нужна цифра от 1 до 20.")
+        return
+    value = int(raw)
+    if value < 1 or value > 20:
+        await message.answer("Лимит должен быть от 1 до 20.")
+        return
+
+    project_id = await _resolve_project_id(message, state, session)
+    if not project_id:
+        await message.answer("Проект не найден. Начни с /start.")
+        return
+
+    project_repo = ProjectRepository(session)
+    project = await project_repo.get_by_id(project_id)
+    if not project:
+        await message.answer("Проект не найден. Начни с /start.")
+        return
+
+    schedule_repo = ScheduleRepository(session)
+    schedule = await schedule_repo.get_by_project_id(project_id)
+    if schedule:
+        await schedule_repo.update_schedule(
+            schedule,
+            tz=project.tz,
+            slots=_load_slots(schedule.slots_json) or DEFAULT_SLOTS,
+            per_day_limit=value,
+            enabled=schedule.enabled,
+        )
+    else:
+        await schedule_repo.create_schedule(
+            project_id=project_id,
+            tz=project.tz,
+            slots=DEFAULT_SLOTS,
+            per_day_limit=value,
+            enabled=False,
+        )
+
+    await state.set_state(None)
+    await message.answer("Лимит сохранен.", reply_markup=_build_keyboard(AUTPOST_MENU))
 
 
 @router.message(F.text == "Подключить канал")

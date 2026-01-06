@@ -2,8 +2,8 @@ from datetime import datetime, timezone
 
 import pytest
 
-from src.autocontent.integrations.telegram_client import TelegramClient
-from src.autocontent.repos import (
+from autocontent.integrations.telegram_client import TelegramClient
+from autocontent.repos import (
     ChannelBindingRepository,
     PostDraftRepository,
     ProjectRepository,
@@ -12,11 +12,11 @@ from src.autocontent.repos import (
     SourceRepository,
     UserRepository,
 )
-from src.autocontent.services.publication_service import PublicationService
-from src.autocontent.shared.idempotency import InMemoryIdempotencyStore
-from src.autocontent.services.quota import QuotaService, QuotaExceededError
-from src.autocontent.config import Settings
-from src.autocontent.shared.text import compute_content_hash
+from autocontent.services.publication_service import PublicationService
+from autocontent.shared.idempotency import InMemoryIdempotencyStore
+from autocontent.services.quota import QuotaService, QuotaExceededError
+from autocontent.config import Settings
+from autocontent.shared.text import compute_content_hash
 
 
 class FakeTelegramClient(TelegramClient):

@@ -1,3 +1,3 @@
 """
-Namespace package entrypoint for src.autocontent imports.
+Namespace package entrypoint for autocontent imports.
 """

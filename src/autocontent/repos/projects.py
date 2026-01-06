@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.autocontent.domain import Project
+from autocontent.domain import Project
 
 
 class ProjectRepository:

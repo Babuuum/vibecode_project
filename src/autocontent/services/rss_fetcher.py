@@ -6,11 +6,11 @@ from typing import Iterable
 import feedparser
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.autocontent.domain import Source
-from src.autocontent.config import Settings
-from src.autocontent.integrations.rss_client import HttpRSSClient, RSSClient
-from src.autocontent.repos import SourceItemRepository, SourceRepository
-from src.autocontent.shared.text import compute_content_hash, normalize_text
+from autocontent.domain import Source
+from autocontent.config import Settings
+from autocontent.integrations.rss_client import HttpRSSClient, RSSClient
+from autocontent.repos import SourceItemRepository, SourceRepository
+from autocontent.shared.text import compute_content_hash, normalize_text
 
 
 def _parse_datetime(entry: dict) -> datetime | None:

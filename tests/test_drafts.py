@@ -1,11 +1,11 @@
 import pytest
 from datetime import datetime, timezone
 
-from src.autocontent.config import Settings
-from src.autocontent.integrations.llm_client import LLMClient, LLMResponse, MockLLMClient
-from src.autocontent.repos import ProjectRepository, ProjectSettingsRepository, SourceItemRepository, SourceRepository, UserRepository
-from src.autocontent.services.draft_service import DraftService, compute_draft_hash
-from src.autocontent.services.quota import QuotaService, QuotaExceededError
+from autocontent.config import Settings
+from autocontent.integrations.llm_client import LLMClient, LLMResponse, MockLLMClient
+from autocontent.repos import ProjectRepository, ProjectSettingsRepository, SourceItemRepository, SourceRepository, UserRepository
+from autocontent.services.draft_service import DraftService, compute_draft_hash
+from autocontent.services.quota import QuotaService, QuotaExceededError
 
 
 class FakeLLM(LLMClient):

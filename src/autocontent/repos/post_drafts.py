@@ -4,8 +4,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.autocontent.domain import PostDraft
-from src.autocontent.shared.text import compute_draft_hash as compute_draft_hash_value
+from autocontent.domain import PostDraft
+from autocontent.shared.text import compute_draft_hash as compute_draft_hash_value
 
 
 class PostDraftRepository:

@@ -1,7 +1,7 @@
 import pytest
 
-from src.autocontent.config import Settings
-from src.autocontent.services.quota import QuotaExceededError, QuotaService
+from autocontent.config import Settings
+from autocontent.services.quota import QuotaExceededError, QuotaService
 
 
 class FakeRedis:

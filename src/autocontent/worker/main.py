@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.autocontent.infrastructure.celery_app import celery_app
+from autocontent.infrastructure.celery_app import celery_app
 
 
 def run() -> None:

@@ -1,6 +1,6 @@
 import uvicorn
 
-from src.autocontent.api import main
+from autocontent.api import main
 
 
 def test_run_invokes_uvicorn(monkeypatch) -> None:
@@ -14,6 +14,6 @@ def test_run_invokes_uvicorn(monkeypatch) -> None:
 
     main.run()
 
-    assert captured["args"][0] == "src.autocontent.api.main:app"
+    assert captured["args"][0] == "autocontent.api.main:app"
     assert captured["kwargs"]["host"] == "0.0.0.0"
     assert captured["kwargs"]["port"] == 8000

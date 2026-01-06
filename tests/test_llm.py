@@ -3,9 +3,9 @@ import logging
 import httpx
 import pytest
 
-from src.autocontent.config import Settings
-from src.autocontent.integrations.llm_client import LLMRequest, LLMResponse, MockLLMClient, RealLLMClient
-from src.autocontent.services.llm_gateway import LLMGateway
+from autocontent.config import Settings
+from autocontent.integrations.llm_client import LLMRequest, LLMResponse, MockLLMClient, RealLLMClient
+from autocontent.services.llm_gateway import LLMGateway
 
 
 @pytest.mark.asyncio

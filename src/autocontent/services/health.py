@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.autocontent.domain.health import HealthStatus
+from autocontent.domain.health import HealthStatus
 
 
 class HealthService:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from src.autocontent.config import Settings
-from src.autocontent.integrations.llm_client import (
+from autocontent.config import Settings
+from autocontent.integrations.llm_client import (
     LLMClient,
     LLMRequest,
     LLMResponse,

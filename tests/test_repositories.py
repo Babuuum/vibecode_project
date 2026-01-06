@@ -1,8 +1,8 @@
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.autocontent.domain import ProjectSettings
-from src.autocontent.repos import (
+from autocontent.domain import ProjectSettings
+from autocontent.repos import (
     ProjectRepository,
     ProjectSettingsRepository,
     SourceItemRepository,

@@ -2,18 +2,18 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.autocontent.config import Settings
-from src.autocontent.domain import PostDraft, SourceItem
-from src.autocontent.integrations.llm_client import LLMClient, LLMResponse
-from src.autocontent.repos import (
+from autocontent.config import Settings
+from autocontent.domain import PostDraft, SourceItem
+from autocontent.integrations.llm_client import LLMClient, LLMResponse
+from autocontent.repos import (
     PostDraftRepository,
     ProjectSettingsRepository,
     SourceItemRepository,
     SourceRepository,
 )
-from src.autocontent.services.llm_gateway import LLMGateway
-from src.autocontent.services.quota import NoopQuotaService, QuotaBackend
-from src.autocontent.shared.text import compute_draft_hash as _compute_draft_hash, normalize_text
+from autocontent.services.llm_gateway import LLMGateway
+from autocontent.services.quota import NoopQuotaService, QuotaBackend
+from autocontent.shared.text import compute_draft_hash as _compute_draft_hash, normalize_text
 
 
 class DraftGenerationError(Exception):

@@ -1,7 +1,7 @@
 import pytest
 from httpx import AsyncClient
 
-from src.autocontent.api.main import create_app
+from autocontent.api.main import create_app
 
 
 @pytest.mark.asyncio

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.autocontent.integrations.telegram_client import (
+from autocontent.integrations.telegram_client import (
     ChannelForbiddenError,
     ChannelNotFoundError,
     TelegramClientError,
     TelegramClient,
 )
-from src.autocontent.repos import ChannelBindingRepository
+from autocontent.repos import ChannelBindingRepository
 
 
 class ChannelBindingNotFoundError(Exception):

@@ -1,10 +1,10 @@
 import pytest
 from datetime import datetime, timezone
 
-from src.autocontent.config import Settings
-from src.autocontent.integrations.llm_client import MockLLMClient
-from src.autocontent.integrations.telegram_client import TelegramClient
-from src.autocontent.repos import (
+from autocontent.config import Settings
+from autocontent.integrations.llm_client import MockLLMClient
+from autocontent.integrations.telegram_client import TelegramClient
+from autocontent.repos import (
     ChannelBindingRepository,
     PostDraftRepository,
     ProjectRepository,
@@ -12,13 +12,13 @@ from src.autocontent.repos import (
     SourceRepository,
     UserRepository,
 )
-from src.autocontent.services.draft_service import DraftService
-from src.autocontent.services.publication_service import PublicationService, PublicationError
-from src.autocontent.services.quota import QuotaExceededError, QuotaService
-from src.autocontent.services.rss_fetcher import fetch_and_save_source
-from src.autocontent.services.source_service import SourceService
-from src.autocontent.shared.idempotency import InMemoryIdempotencyStore
-from src.autocontent.shared.text import compute_content_hash
+from autocontent.services.draft_service import DraftService
+from autocontent.services.publication_service import PublicationService, PublicationError
+from autocontent.services.quota import QuotaExceededError, QuotaService
+from autocontent.services.rss_fetcher import fetch_and_save_source
+from autocontent.services.source_service import SourceService
+from autocontent.shared.idempotency import InMemoryIdempotencyStore
+from autocontent.shared.text import compute_content_hash
 
 
 RSS_SAMPLE = """<?xml version="1.0" encoding="UTF-8" ?>

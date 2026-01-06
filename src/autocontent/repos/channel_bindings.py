@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.autocontent.domain import ChannelBinding
+from autocontent.domain import ChannelBinding
 
 
 class ChannelBindingRepository:
