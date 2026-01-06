@@ -9,7 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from autocontent.domain import Source
 from autocontent.config import Settings
 from autocontent.integrations.rss_client import HttpRSSClient, RSSClient
+from autocontent.integrations.task_queue import TaskQueue
 from autocontent.repos import SourceItemRepository, SourceRepository
+from autocontent.shared.lock import InMemoryLockStore, LockStore
 from autocontent.shared.text import compute_content_hash, normalize_text
 
 
@@ -28,6 +30,9 @@ async def fetch_and_save_source(
     source_id: int,
     session: AsyncSession,
     rss_client: RSSClient | None = None,
+    task_queue: TaskQueue | None = None,
+    lock_store: LockStore | None = None,
+    max_items_per_run: int | None = None,
 ) -> tuple[Source | None, int]:
     rss_client = rss_client or HttpRSSClient()
 
@@ -42,6 +47,7 @@ async def fetch_and_save_source(
         raw_content = await rss_client.fetch(source.url)
         feed = feedparser.parse(raw_content)
         saved = 0
+        created_items: list[int] = []
         for entry in _extract_entries(feed):
             link = entry.get("link") or ""
             title = entry.get("title") or "(no title)"
@@ -62,10 +68,19 @@ async def fetch_and_save_source(
             )
             if item:
                 saved += 1
+                created_items.append(item.id)
 
         await source_repo.update_status(
             source.id, status="ok", last_error=None, consecutive_failures=0
         )
+        if created_items and task_queue:
+            lock = lock_store or InMemoryLockStore()
+            settings = Settings()
+            ttl = settings.generate_lock_ttl
+            if await lock.acquire(f"generate:{source.project_id}", ttl):
+                limit = max_items_per_run or settings.max_generate_per_fetch
+                for item_id in created_items[:limit]:
+                    task_queue.enqueue_generate_draft(item_id)
         return source, saved
     except Exception as exc:  # noqa: BLE001
         new_failures = (source.consecutive_failures or 0) + 1

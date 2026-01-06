@@ -13,8 +13,10 @@ from autocontent.services.publication_service import PublicationService
 from autocontent.services.rss_fetcher import fetch_and_save_source
 from autocontent.shared.db import create_engine_from_settings, create_session_factory
 from autocontent.shared.idempotency import InMemoryIdempotencyStore, RedisIdempotencyStore
+from autocontent.shared.lock import InMemoryLockStore, RedisLockStore
 from autocontent.services.quota import QuotaService
 from autocontent.repos import ScheduleRepository, SourceRepository
+from autocontent.integrations.task_queue import CeleryTaskQueue
 
 try:
     from redis import asyncio as aioredis
@@ -28,8 +30,21 @@ def fetch_source_task(source_id: int) -> None:
         settings = Settings()
         engine = create_engine_from_settings(settings)
         session_factory = create_session_factory(engine)
+        lock_store: InMemoryLockStore | RedisLockStore = InMemoryLockStore()
+        if aioredis:
+            try:
+                redis_client = aioredis.from_url(settings.redis_url)
+                lock_store = RedisLockStore(redis_client)
+            except Exception:
+                pass
         async with session_factory() as session:
-            await fetch_and_save_source(source_id, session)
+            await fetch_and_save_source(
+                source_id,
+                session,
+                task_queue=CeleryTaskQueue(),
+                lock_store=lock_store,
+                max_items_per_run=settings.max_generate_per_fetch,
+            )
         await engine.dispose()
 
     asyncio.run(_run())
@@ -41,6 +56,13 @@ def fetch_all_sources_task() -> None:
         settings = Settings()
         engine = create_engine_from_settings(settings)
         session_factory = create_session_factory(engine)
+        lock_store: InMemoryLockStore | RedisLockStore = InMemoryLockStore()
+        if aioredis:
+            try:
+                redis_client = aioredis.from_url(settings.redis_url)
+                lock_store = RedisLockStore(redis_client)
+            except Exception:
+                pass
         async with session_factory() as session:
             repo = SourceRepository(session)
             sources = await repo.list_all()
@@ -50,7 +72,13 @@ def fetch_all_sources_task() -> None:
                     delta = (datetime.now(timezone.utc) - src.last_fetch_at).total_seconds()
                     if delta < backoff_seconds:
                         continue
-                await fetch_and_save_source(src.id, session)
+                await fetch_and_save_source(
+                    src.id,
+                    session,
+                    task_queue=CeleryTaskQueue(),
+                    lock_store=lock_store,
+                    max_items_per_run=settings.max_generate_per_fetch,
+                )
         await engine.dispose()
 
     asyncio.run(_run())

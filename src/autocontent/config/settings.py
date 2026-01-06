@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     sources_limit: int = 10
     fetch_interval_min: int = 10
     source_fail_threshold: int = 3
+    max_generate_per_fetch: int = 5
+    generate_lock_ttl: int = 60
 
     @property
     def llm_max_tokens(self) -> int:

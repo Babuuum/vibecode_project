@@ -6,9 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from autocontent.config import Settings
 from autocontent.domain import Source
 from autocontent.integrations.rss_client import HttpRSSClient, RSSClient
+from autocontent.integrations.task_queue import TaskQueue
 from autocontent.repos import SourceItemRepository, SourceRepository
 from autocontent.services.rss_fetcher import fetch_and_save_source
 from autocontent.services.quota import QuotaExceededError
+from autocontent.shared.lock import LockStore
 
 
 class DuplicateSourceError(Exception):
@@ -21,12 +23,16 @@ class SourceService:
         session: AsyncSession,
         rss_client: RSSClient | None = None,
         settings: Settings | None = None,
+        task_queue: TaskQueue | None = None,
+        lock_store: LockStore | None = None,
     ) -> None:
         self._session = session
         self._repo = SourceRepository(session)
         self._items = SourceItemRepository(session)
         self._rss_client = rss_client or HttpRSSClient()
         self._settings = settings or Settings()
+        self._task_queue = task_queue
+        self._lock_store = lock_store
 
     async def add_source(self, project_id: int, url: str) -> None:
         existing_sources = await self._repo.list_by_project(project_id)
@@ -42,7 +48,14 @@ class SourceService:
         return await self._repo.list_by_project(project_id)
 
     async def fetch_source(self, source_id: int) -> tuple[Source | None, int]:
-        return await fetch_and_save_source(source_id, self._session, rss_client=self._rss_client)
+        return await fetch_and_save_source(
+            source_id,
+            self._session,
+            rss_client=self._rss_client,
+            task_queue=self._task_queue,
+            lock_store=self._lock_store,
+            max_items_per_run=self._settings.max_generate_per_fetch,
+        )
 
     async def fetch_all_for_project(self, project_id: int) -> int:
         sources = await self._repo.list_by_project(project_id)
