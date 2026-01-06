@@ -16,7 +16,12 @@ class DuplicateSourceError(Exception):
 
 
 class SourceService:
-    def __init__(self, session: AsyncSession, rss_client: RSSClient | None = None, settings: Settings | None = None) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        rss_client: RSSClient | None = None,
+        settings: Settings | None = None,
+    ) -> None:
         self._session = session
         self._repo = SourceRepository(session)
         self._items = SourceItemRepository(session)
@@ -46,6 +51,9 @@ class SourceService:
             _, saved = await self.fetch_source(src.id)
             total_saved += saved
         return total_saved
+
+    async def list_sources(self, project_id: int):
+        return await self._repo.list_by_project(project_id)
 
     async def get_latest_new_item(self, project_id: int):
         return await self._items.get_latest_new_for_project(project_id)

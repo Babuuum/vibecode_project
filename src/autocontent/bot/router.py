@@ -59,6 +59,7 @@ TONE_OPTIONS = ["friendly", "formal", "casual"]
 CHANNEL_MENU = ["Настройки", "Подключить канал", "Проверить"]
 DRAFT_MENU = ["Сгенерировать сейчас", "Черновики"]
 SOURCE_MENU = ["Добавить RSS", "Список источников", "Fetch now"] + DRAFT_MENU + CHANNEL_MENU
+SOURCE_STATUS_MENU = ["Статус источников"] + SOURCE_MENU
 COOLDOWN_TTL_SECONDS = 45
 
 _default_task_queue: TaskQueue = CeleryTaskQueue()
@@ -159,7 +160,7 @@ async def tone_handler(message: Message, state: FSMContext, session: AsyncSessio
             f"Язык: {settings.language}\n"
             f"Ниша: {settings.niche}\n"
             f"Тон: {settings.tone}",
-            reply_markup=_build_keyboard(SOURCE_MENU),
+            reply_markup=_build_keyboard(SOURCE_STATUS_MENU),
         )
     except SQLAlchemyError:
         await _handle_db_error(message)
@@ -204,7 +205,7 @@ async def settings_handler(message: Message, state: FSMContext, session: AsyncSe
             f"Safe mode: {settings.safe_mode}\n"
             f"Автопостинг: {settings.autopost_enabled}",
             parse_mode=ParseMode.HTML,
-            reply_markup=_build_keyboard(SOURCE_MENU),
+            reply_markup=_build_keyboard(SOURCE_STATUS_MENU),
         )
     except SQLAlchemyError:
         await _handle_db_error(message)
@@ -297,7 +298,7 @@ async def save_rss_handler(message: Message, state: FSMContext, session: AsyncSe
         await state.clear()
         await message.answer(
             "Источник добавлен. Используй «Fetch now» для проверки.",
-            reply_markup=_build_keyboard(SOURCE_MENU),
+            reply_markup=_build_keyboard(SOURCE_STATUS_MENU),
         )
     except DuplicateSourceError:
         await message.answer("Такой источник уже добавлен.", reply_markup=_build_keyboard(SOURCE_MENU))
@@ -324,7 +325,30 @@ async def list_sources_handler(message: Message, state: FSMContext, session: Asy
         f"{src.id}. {src.url} [{src.status}] last_fetch={src.last_fetch_at or '-'}"
         for src in sources
     ]
-    await message.answer("\n".join(lines), reply_markup=_build_keyboard(SOURCE_MENU))
+    await message.answer("\n".join(lines), reply_markup=_build_keyboard(SOURCE_STATUS_MENU))
+
+
+@router.message(F.text == "Статус источников")
+async def sources_status_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
+    project_id = await _resolve_project_id(message, state, session)
+    if not project_id:
+        await message.answer("Проект не найден, начните /start.")
+        return
+
+    service = SourceService(session)
+    sources = await service.list_sources(project_id)
+    if not sources:
+        await message.answer("Источники не добавлены.", reply_markup=_build_keyboard(SOURCE_STATUS_MENU))
+        return
+
+    lines = []
+    for src in sources:
+        status = src.status
+        lines.append(
+            f"{src.id}. {src.url} [{status}] last_fetch={src.last_fetch_at or '-'} "
+            f"errors={src.consecutive_failures} last_error={src.last_error or '-'}"
+        )
+    await message.answer("\n".join(lines), reply_markup=_build_keyboard(SOURCE_STATUS_MENU))
 
 
 @router.message(F.text == "Fetch now")

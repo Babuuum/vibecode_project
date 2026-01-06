@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 
 from aiogram import Bot
 
@@ -13,6 +14,7 @@ from autocontent.services.rss_fetcher import fetch_and_save_source
 from autocontent.shared.db import create_engine_from_settings, create_session_factory
 from autocontent.shared.idempotency import InMemoryIdempotencyStore, RedisIdempotencyStore
 from autocontent.services.quota import QuotaService
+from autocontent.repos import SourceRepository
 
 try:
     from redis import asyncio as aioredis
@@ -23,10 +25,32 @@ except Exception:  # pragma: no cover
 @celery_app.task(name="fetch_source")
 def fetch_source_task(source_id: int) -> None:
     async def _run() -> None:
-        engine = create_engine_from_settings()
+        settings = Settings()
+        engine = create_engine_from_settings(settings)
         session_factory = create_session_factory(engine)
         async with session_factory() as session:
             await fetch_and_save_source(source_id, session)
+        await engine.dispose()
+
+    asyncio.run(_run())
+
+
+@celery_app.task(name="fetch_all_sources")
+def fetch_all_sources_task() -> None:
+    async def _run() -> None:
+        settings = Settings()
+        engine = create_engine_from_settings(settings)
+        session_factory = create_session_factory(engine)
+        async with session_factory() as session:
+            repo = SourceRepository(session)
+            sources = await repo.list_all()
+            for src in sources:
+                if src.status == "broken" and src.last_fetch_at:
+                    backoff_seconds = src.fetch_interval_min * 3 * 60
+                    delta = (datetime.now(timezone.utc) - src.last_fetch_at).total_seconds()
+                    if delta < backoff_seconds:
+                        continue
+                await fetch_and_save_source(src.id, session)
         await engine.dispose()
 
     asyncio.run(_run())

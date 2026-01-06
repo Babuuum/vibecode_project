@@ -73,6 +73,7 @@ class Source(Base):
     url: Mapped[str] = mapped_column(String(length=512), nullable=False)
     status: Mapped[str] = mapped_column(String(length=32), nullable=False, default="pending")
     fetch_interval_min: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_fetch_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 

@@ -12,7 +12,15 @@ celery_app = Celery(
     backend=settings.resolved_celery_result_backend,
 )
 
-celery_app.conf.update(task_default_queue="default", beat_schedule={})
+celery_app.conf.update(
+    task_default_queue="default",
+    beat_schedule={
+        "fetch-all-sources": {
+            "task": "fetch_all_sources",
+            "schedule": settings.fetch_interval_min * 60,
+        }
+    },
+)
 
 # Register tasks
 try:

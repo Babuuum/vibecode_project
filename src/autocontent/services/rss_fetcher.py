@@ -7,6 +7,7 @@ import feedparser
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autocontent.domain import Source
+from autocontent.config import Settings
 from autocontent.integrations.rss_client import HttpRSSClient, RSSClient
 from autocontent.repos import SourceItemRepository, SourceRepository
 from autocontent.shared.text import compute_content_hash, normalize_text
@@ -62,8 +63,19 @@ async def fetch_and_save_source(
             if item:
                 saved += 1
 
-        await source_repo.update_status(source.id, status="ok", last_error=None)
+        await source_repo.update_status(
+            source.id, status="ok", last_error=None, consecutive_failures=0
+        )
         return source, saved
     except Exception as exc:  # noqa: BLE001
-        await source_repo.update_status(source_id, status="error", last_error=str(exc))
+        new_failures = (source.consecutive_failures or 0) + 1
+        status = "error"
+        if new_failures >= Settings().source_fail_threshold:
+            status = "broken"
+        await source_repo.update_status(
+            source_id,
+            status=status,
+            last_error=str(exc),
+            consecutive_failures=new_failures,
+        )
         return source, 0

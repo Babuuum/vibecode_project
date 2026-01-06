@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     drafts_per_day: int = 20
     publishes_per_day: int = 20
     sources_limit: int = 10
+    fetch_interval_min: int = 10
+    source_fail_threshold: int = 3
 
     @property
     def llm_max_tokens(self) -> int:

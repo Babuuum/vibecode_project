@@ -36,8 +36,17 @@ class SourceRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_all(self) -> list[Source]:
+        stmt = select(Source)
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
     async def update_status(
-        self, source_id: int, status: str, last_error: str | None = None
+        self,
+        source_id: int,
+        status: str,
+        last_error: str | None = None,
+        consecutive_failures: int | None = None,
     ) -> Source | None:
         source = await self.get_by_id(source_id)
         if not source:
@@ -45,6 +54,8 @@ class SourceRepository:
         source.status = status
         source.last_error = last_error
         source.last_fetch_at = datetime.now(timezone.utc)
+        if consecutive_failures is not None:
+            source.consecutive_failures = consecutive_failures
         await self._session.commit()
         await self._session.refresh(source)
         return source
