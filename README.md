@@ -25,7 +25,7 @@ pre-commit install
 
 ## Run locally
 ```bash
-poetry run uvicorn autocontent.api.main:app --host 0.0.0.0 --port 8000 --reload
+poetry run uvicorn src.autocontent.api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Bot and worker entrypoints are available via scripts:

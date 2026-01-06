@@ -6,8 +6,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from autocontent.bot.router import help_handler, status_handler
-from autocontent.repos import ProjectRepository, UserRepository
+from src.autocontent.bot.router import help_handler, status_handler
+from src.autocontent.repos import ProjectRepository, UserRepository
 
 
 @dataclass

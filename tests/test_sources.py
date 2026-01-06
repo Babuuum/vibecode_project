@@ -1,9 +1,9 @@
 import pytest
 from sqlalchemy import select
 
-from autocontent.domain import SourceItem
-from autocontent.repos import ProjectRepository, SourceRepository, UserRepository
-from autocontent.services.rss_fetcher import fetch_and_save_source
+from src.autocontent.domain import SourceItem
+from src.autocontent.repos import ProjectRepository, SourceRepository, UserRepository
+from src.autocontent.services.rss_fetcher import fetch_and_save_source
 
 RSS_SAMPLE = """<?xml version="1.0" encoding="UTF-8" ?>
 <rss version="2.0">

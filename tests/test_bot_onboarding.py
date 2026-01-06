@@ -7,7 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.storage.base import StorageKey
 
-from autocontent.bot.router import (
+from src.autocontent.bot.router import (
     OnboardingStates,
     language_handler,
     niche_handler,
@@ -15,7 +15,7 @@ from autocontent.bot.router import (
     start_handler,
     tone_handler,
 )
-from autocontent.repos import ProjectRepository, ProjectSettingsRepository, UserRepository
+from src.autocontent.repos import ProjectRepository, ProjectSettingsRepository, UserRepository
 
 
 @dataclass

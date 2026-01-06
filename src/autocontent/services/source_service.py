@@ -3,12 +3,12 @@ from __future__ import annotations
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from autocontent.config import Settings
-from autocontent.domain import Source
-from autocontent.integrations.rss_client import HttpRSSClient, RSSClient
-from autocontent.repos import SourceItemRepository, SourceRepository
-from autocontent.services.rss_fetcher import fetch_and_save_source
-from autocontent.services.quota import QuotaExceededError
+from src.autocontent.config import Settings
+from src.autocontent.domain import Source
+from src.autocontent.integrations.rss_client import HttpRSSClient, RSSClient
+from src.autocontent.repos import SourceItemRepository, SourceRepository
+from src.autocontent.services.rss_fetcher import fetch_and_save_source
+from src.autocontent.services.quota import QuotaExceededError
 
 
 class DuplicateSourceError(Exception):

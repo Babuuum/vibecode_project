@@ -6,14 +6,14 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from autocontent.bot.router import (
+from src.autocontent.bot.router import (
     draft_view_handler,
     drafts_list_handler,
     generate_now_handler,
     publish_draft_handler,
 )
-from autocontent.integrations.task_queue import TaskQueue
-from autocontent.repos import (
+from src.autocontent.integrations.task_queue import TaskQueue
+from src.autocontent.repos import (
     ChannelBindingRepository,
     PostDraftRepository,
     ProjectRepository,
@@ -21,10 +21,10 @@ from autocontent.repos import (
     SourceRepository,
     UserRepository,
 )
-from autocontent.shared.cooldown import InMemoryCooldownStore
-from autocontent.shared.idempotency import InMemoryIdempotencyStore
-from autocontent.shared.text import compute_content_hash
-from autocontent.services.quota import NoopQuotaService
+from src.autocontent.shared.cooldown import InMemoryCooldownStore
+from src.autocontent.shared.idempotency import InMemoryIdempotencyStore
+from src.autocontent.shared.text import compute_content_hash
+from src.autocontent.services.quota import NoopQuotaService
 
 @dataclass
 class FakeFromUser:

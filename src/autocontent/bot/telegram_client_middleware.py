@@ -5,7 +5,7 @@ from typing import Any, Awaitable, Callable
 from aiogram import BaseMiddleware
 from aiogram.types import Message
 
-from autocontent.integrations.telegram_client import TelegramClient
+from src.autocontent.integrations.telegram_client import TelegramClient
 
 
 class TelegramClientMiddleware(BaseMiddleware):

@@ -5,16 +5,16 @@ from datetime import datetime, timezone
 
 from aiogram import Bot
 
-from autocontent.config import Settings
-from autocontent.infrastructure.celery_app import celery_app
-from autocontent.integrations.telegram_client import AiogramTelegramClient, TransientTelegramError
-from autocontent.services.draft_service import DraftService
-from autocontent.services.publication_service import PublicationService
-from autocontent.services.rss_fetcher import fetch_and_save_source
-from autocontent.shared.db import create_engine_from_settings, create_session_factory
-from autocontent.shared.idempotency import InMemoryIdempotencyStore, RedisIdempotencyStore
-from autocontent.services.quota import QuotaService
-from autocontent.repos import SourceRepository
+from src.autocontent.config import Settings
+from src.autocontent.infrastructure.celery_app import celery_app
+from src.autocontent.integrations.telegram_client import AiogramTelegramClient, TransientTelegramError
+from src.autocontent.services.draft_service import DraftService
+from src.autocontent.services.publication_service import PublicationService
+from src.autocontent.services.rss_fetcher import fetch_and_save_source
+from src.autocontent.shared.db import create_engine_from_settings, create_session_factory
+from src.autocontent.shared.idempotency import InMemoryIdempotencyStore, RedisIdempotencyStore
+from src.autocontent.services.quota import QuotaService
+from src.autocontent.repos import SourceRepository
 
 try:
     from redis import asyncio as aioredis

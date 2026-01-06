@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from autocontent.domain import Project, ProjectSettings, User
-from autocontent.repos import ProjectRepository, ProjectSettingsRepository, UserRepository
+from src.autocontent.domain import Project, ProjectSettings, User
+from src.autocontent.repos import ProjectRepository, ProjectSettingsRepository, UserRepository
 
 
 class ProjectService:

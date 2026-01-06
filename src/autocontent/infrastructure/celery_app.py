@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from celery import Celery
 
-from autocontent.config import Settings
+from src.autocontent.config import Settings
 
 try:
     import sentry_sdk
@@ -31,6 +31,6 @@ celery_app.conf.update(
 
 # Register tasks
 try:
-    from autocontent.worker import tasks as _worker_tasks  # noqa: F401
+    from src.autocontent.worker import tasks as _worker_tasks  # noqa: F401
 except Exception:
     pass

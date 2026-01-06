@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
-from autocontent.api.schemas import HealthResponse
-from autocontent.services import HealthService
+from src.autocontent.api.schemas import HealthResponse
+from src.autocontent.services import HealthService
 
 api_router = APIRouter()
 health_service = HealthService()

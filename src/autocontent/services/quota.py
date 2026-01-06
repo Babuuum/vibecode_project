@@ -8,7 +8,7 @@ try:
 except Exception:  # pragma: no cover
     Redis = None  # type: ignore[assignment]
 
-from autocontent.config import Settings
+from src.autocontent.config import Settings
 
 
 class QuotaExceededError(Exception):

@@ -8,8 +8,8 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from autocontent.config import Settings
-from autocontent.shared.db import Base
+from src.autocontent.config import Settings
+from src.autocontent.shared.db import Base
 
 config = context.config
 settings = Settings()

@@ -3,13 +3,13 @@ from typing import Any, List
 
 import pytest
 
-from autocontent.bot.router import channel_check_handler
-from autocontent.integrations.telegram_client import (
+from src.autocontent.bot.router import channel_check_handler
+from src.autocontent.integrations.telegram_client import (
     ChannelForbiddenError,
     ChannelNotFoundError,
     TelegramClient,
 )
-from autocontent.repos import ChannelBindingRepository, ProjectRepository, UserRepository
+from src.autocontent.repos import ChannelBindingRepository, ProjectRepository, UserRepository
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage

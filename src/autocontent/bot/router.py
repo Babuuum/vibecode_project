@@ -18,27 +18,27 @@ from aiogram.types import (
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from autocontent.bot.source_states import SourceStates
-from autocontent.integrations.telegram_client import (
+from src.autocontent.bot.source_states import SourceStates
+from src.autocontent.integrations.telegram_client import (
     ChannelForbiddenError,
     ChannelNotFoundError,
     TelegramClient,
     TelegramClientError,
 )
-from autocontent.integrations.task_queue import CeleryTaskQueue, TaskQueue
-from autocontent.repos import ChannelBindingRepository, ProjectRepository, SourceItemRepository, SourceRepository
-from autocontent.services import ChannelBindingService, DraftService, ProjectService, SourceService
-from autocontent.services.channel_binding import ChannelBindingNotFoundError
-from autocontent.services.quota import (
+from src.autocontent.integrations.task_queue import CeleryTaskQueue, TaskQueue
+from src.autocontent.repos import ChannelBindingRepository, ProjectRepository, SourceItemRepository, SourceRepository
+from src.autocontent.services import ChannelBindingService, DraftService, ProjectService, SourceService
+from src.autocontent.services.channel_binding import ChannelBindingNotFoundError
+from src.autocontent.services.quota import (
     NoopQuotaService,
     QuotaBackend,
     QuotaExceededError,
     QuotaService,
 )
-from autocontent.services.source_service import DuplicateSourceError
-from autocontent.shared.cooldown import CooldownStore, InMemoryCooldownStore, RedisCooldownStore
-from autocontent.shared.idempotency import IdempotencyStore, InMemoryIdempotencyStore, RedisIdempotencyStore
-from autocontent.config import Settings
+from src.autocontent.services.source_service import DuplicateSourceError
+from src.autocontent.shared.cooldown import CooldownStore, InMemoryCooldownStore, RedisCooldownStore
+from src.autocontent.shared.idempotency import IdempotencyStore, InMemoryIdempotencyStore, RedisIdempotencyStore
+from src.autocontent.config import Settings
 
 try:
     from redis import asyncio as aioredis

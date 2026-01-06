@@ -6,7 +6,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from autocontent.domain import Source, SourceItem
+from src.autocontent.domain import Source, SourceItem
 
 
 class SourceItemRepository:

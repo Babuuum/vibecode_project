@@ -20,4 +20,4 @@ RUN poetry config virtualenvs.create false \
 
 COPY src ./src
 
-CMD ["uvicorn", "autocontent.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "src.autocontent.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,8 +1,8 @@
 import pytest
 from dataclasses import dataclass
 
-from autocontent.integrations.telegram_client import TelegramClient
-from autocontent.repos import (
+from src.autocontent.integrations.telegram_client import TelegramClient
+from src.autocontent.repos import (
     ChannelBindingRepository,
     PostDraftRepository,
     ProjectRepository,
@@ -10,10 +10,10 @@ from autocontent.repos import (
     SourceRepository,
     UserRepository,
 )
-from autocontent.services.draft_service import compute_draft_hash
-from autocontent.services.publication_service import PublicationService
-from autocontent.shared.text import compute_content_hash
-from autocontent.shared.idempotency import InMemoryIdempotencyStore
+from src.autocontent.services.draft_service import compute_draft_hash
+from src.autocontent.services.publication_service import PublicationService
+from src.autocontent.shared.text import compute_content_hash
+from src.autocontent.shared.idempotency import InMemoryIdempotencyStore
 
 
 class FakeTelegramClient(TelegramClient):

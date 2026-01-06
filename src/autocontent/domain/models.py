@@ -6,7 +6,7 @@ from typing import List
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from autocontent.shared.db import Base
+from src.autocontent.shared.db import Base
 
 
 class User(Base):

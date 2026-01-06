@@ -3,8 +3,8 @@ from __future__ import annotations
 import uvicorn
 from fastapi import FastAPI
 
-from autocontent.api.routes import api_router
-from autocontent.config import Settings
+from src.autocontent.api.routes import api_router
+from src.autocontent.config import Settings
 
 try:
     import sentry_sdk
@@ -28,7 +28,7 @@ app = create_app()
 def run() -> None:
     settings = Settings()
     uvicorn.run(
-        "autocontent.api.main:app",
+        "src.autocontent.api.main:app",
         host=settings.api_host,
         port=settings.api_port,
         reload=settings.reload,

@@ -5,16 +5,16 @@ from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from autocontent.config import Settings
-from autocontent.integrations.telegram_client import (
+from src.autocontent.config import Settings
+from src.autocontent.integrations.telegram_client import (
     ChannelForbiddenError,
     ChannelNotFoundError,
     TelegramClient,
     TransientTelegramError,
 )
-from autocontent.repos import ChannelBindingRepository, PostDraftRepository, PublicationLogRepository
-from autocontent.services.quota import NoopQuotaService, QuotaBackend, QuotaExceededError
-from autocontent.shared.idempotency import IdempotencyStore, InMemoryIdempotencyStore
+from src.autocontent.repos import ChannelBindingRepository, PostDraftRepository, PublicationLogRepository
+from src.autocontent.services.quota import NoopQuotaService, QuotaBackend, QuotaExceededError
+from src.autocontent.shared.idempotency import IdempotencyStore, InMemoryIdempotencyStore
 
 
 class PublicationError(Exception):
