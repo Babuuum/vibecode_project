@@ -25,6 +25,10 @@ celery_app.conf.update(
         "fetch-all-sources": {
             "task": "fetch_all_sources",
             "schedule": settings.fetch_interval_min * 60,
+        },
+        "publish-due-drafts": {
+            "task": "publish_due_drafts",
+            "schedule": 120,
         }
     },
 )

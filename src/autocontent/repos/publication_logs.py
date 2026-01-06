@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from datetime import datetime
+
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.autocontent.domain import PublicationLog
+from autocontent.domain import PostDraft, PublicationLog
 
 
 class PublicationLogRepository:
@@ -15,6 +17,31 @@ class PublicationLogRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_by_draft_and_scheduled(
+        self, draft_id: int, scheduled_at: datetime
+    ) -> PublicationLog | None:
+        stmt = select(PublicationLog).where(
+            PublicationLog.draft_id == draft_id,
+            PublicationLog.scheduled_at == scheduled_at,
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def count_by_project_scheduled_between(
+        self, project_id: int, start_at: datetime, end_at: datetime
+    ) -> int:
+        stmt = (
+            select(func.count(PublicationLog.id))
+            .join(PostDraft, PostDraft.id == PublicationLog.draft_id)
+            .where(
+                PostDraft.project_id == project_id,
+                PublicationLog.scheduled_at >= start_at,
+                PublicationLog.scheduled_at < end_at,
+            )
+        )
+        result = await self._session.execute(stmt)
+        return int(result.scalar_one() or 0)
+
     async def create_log(
         self,
         draft_id: int,
@@ -25,9 +52,14 @@ class PublicationLogRepository:
         published_at=None,
         scheduled_at=None,
     ) -> PublicationLog:
-        existing = await self.get_by_draft_id(draft_id)
-        if existing:
-            return existing
+        if scheduled_at is not None:
+            existing = await self.get_by_draft_and_scheduled(draft_id, scheduled_at)
+            if existing:
+                return existing
+        else:
+            existing = await self.get_by_draft_id(draft_id)
+            if existing:
+                return existing
 
         log = PublicationLog(
             draft_id=draft_id,

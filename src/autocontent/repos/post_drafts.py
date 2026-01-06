@@ -41,6 +41,16 @@ class PostDraftRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_next_ready(self, project_id: int) -> PostDraft | None:
+        stmt = (
+            select(PostDraft)
+            .where(PostDraft.project_id == project_id, PostDraft.status == "ready")
+            .order_by(PostDraft.created_at.asc())
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def count(self) -> int:
         stmt = select(PostDraft)
         result = await self._session.execute(stmt)

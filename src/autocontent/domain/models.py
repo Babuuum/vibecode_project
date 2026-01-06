@@ -115,7 +115,9 @@ class PostDraft(Base):
 
 class PublicationLog(Base):
     __tablename__ = "publication_logs"
-    __table_args__ = (UniqueConstraint("draft_id", name="uq_publication_draft"),)
+    __table_args__ = (
+        UniqueConstraint("draft_id", "scheduled_at", name="uq_publication_draft_scheduled"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     draft_id: Mapped[int] = mapped_column(ForeignKey("post_drafts.id"), nullable=False)
@@ -128,3 +130,15 @@ class PublicationLog(Base):
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class Schedule(Base):
+    __tablename__ = "schedules"
+    __table_args__ = (UniqueConstraint("project_id", name="uq_schedules_project"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    tz: Mapped[str] = mapped_column(String(length=64), nullable=False, default="UTC")
+    slots_json: Mapped[str] = mapped_column(Text, nullable=False)
+    per_day_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
