@@ -22,7 +22,9 @@ from autocontent.repos import (
     UserRepository,
 )
 from autocontent.shared.cooldown import InMemoryCooldownStore
+from autocontent.shared.idempotency import InMemoryIdempotencyStore
 from autocontent.shared.text import compute_content_hash
+from autocontent.services.quota import NoopQuotaService
 
 @dataclass
 class FakeFromUser:
@@ -92,14 +94,25 @@ async def test_generate_now_enqueue_and_cooldown(session) -> None:
     queue = FakeQueue()
     cooldown = InMemoryCooldownStore()
 
+    quota = NoopQuotaService()
     await generate_now_handler(
-        message=msg, state=state, session=session, task_queue=queue, cooldown_store=cooldown
+        message=msg,
+        state=state,
+        session=session,
+        task_queue=queue,
+        cooldown_store=cooldown,
+        quota_service=quota,
     )
     assert queue.items == [item.id]
     assert any("Поставил в очередь" in ans for ans in msg.answers)
 
     await generate_now_handler(
-        message=msg, state=state, session=session, task_queue=queue, cooldown_store=cooldown
+        message=msg,
+        state=state,
+        session=session,
+        task_queue=queue,
+        cooldown_store=cooldown,
+        quota_service=quota,
     )
     assert queue.items == [item.id]
     assert any("Генерация уже запущена" in ans for ans in msg.answers)
@@ -121,7 +134,12 @@ async def test_generate_now_no_sources(session) -> None:
     queue = FakeQueue()
     cooldown = InMemoryCooldownStore()
     await generate_now_handler(
-        message=msg, state=state, session=session, task_queue=queue, cooldown_store=cooldown
+        message=msg,
+        state=state,
+        session=session,
+        task_queue=queue,
+        cooldown_store=cooldown,
+        quota_service=NoopQuotaService(),
     )
 
     assert queue.items == []
@@ -224,6 +242,13 @@ async def test_publish_callback_enqueue(session) -> None:
         message=FakeMessage(text="", from_user=FakeFromUser(id=user.tg_id)),
     )
 
-    await publish_draft_handler(callback=cb, state=state, session=session, task_queue=queue)  # type: ignore[arg-type]
+    await publish_draft_handler(
+        callback=cb,
+        state=state,
+        session=session,
+        task_queue=queue,
+        publish_store=InMemoryIdempotencyStore(),
+        quota_service=NoopQuotaService(),
+    )  # type: ignore[arg-type]
 
     assert queue.publish_items == [draft.id]

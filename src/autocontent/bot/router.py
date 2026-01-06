@@ -28,9 +28,13 @@ from autocontent.integrations.telegram_client import (
 from autocontent.integrations.task_queue import CeleryTaskQueue, TaskQueue
 from autocontent.services import ChannelBindingService, DraftService, ProjectService, SourceService
 from autocontent.services.channel_binding import ChannelBindingNotFoundError
-from autocontent.services.quota import QuotaExceededError, QuotaService, NoopQuotaService
+from autocontent.services.quota import (
+    NoopQuotaService,
+    QuotaBackend,
+    QuotaExceededError,
+    QuotaService,
+)
 from autocontent.services.source_service import DuplicateSourceError
-from autocontent.services.quota import QuotaExceededError
 from autocontent.shared.cooldown import CooldownStore, InMemoryCooldownStore, RedisCooldownStore
 from autocontent.shared.idempotency import IdempotencyStore, InMemoryIdempotencyStore, RedisIdempotencyStore
 from autocontent.config import Settings
@@ -382,7 +386,7 @@ def _resolve_publish_store(store: IdempotencyStore | None) -> IdempotencyStore:
     return store or _publish_store
 
 
-def _resolve_quota_service(quota_service: QuotaService | None) -> QuotaService:
+def _resolve_quota_service(quota_service: QuotaBackend | None) -> QuotaBackend:
     return quota_service or _quota_service
 
 
@@ -393,6 +397,7 @@ async def generate_now_handler(
     session: AsyncSession,
     task_queue: TaskQueue | None = None,
     cooldown_store: CooldownStore | None = None,
+    quota_service: QuotaBackend | None = None,
 ) -> Any:
     project_id = await _resolve_project_id(message, state, session)
     if not project_id:
@@ -410,7 +415,7 @@ async def generate_now_handler(
         await message.answer("Нет новых материалов для генерации. Попробуй Fetch now.")
         return
 
-    quota_service = _resolve_quota_service(None)
+    quota_service = _resolve_quota_service(quota_service)
     try:
         await quota_service.ensure_can_generate(project_id)
     except QuotaExceededError as exc:
@@ -492,6 +497,7 @@ async def publish_draft_handler(
     session: AsyncSession,
     task_queue: TaskQueue | None = None,
     publish_store: IdempotencyStore | None = None,
+    quota_service: QuotaBackend | None = None,
 ) -> Any:
     draft_id = int(callback.data.split(":", 1)[1])
     project_id = await _resolve_project_id(callback.message, state, session)  # type: ignore[arg-type]
@@ -505,7 +511,7 @@ async def publish_draft_handler(
         await callback.answer("Драфт не найден.")
         return
 
-    quota_service = _resolve_quota_service(None)
+    quota_service = _resolve_quota_service(quota_service)
     try:
         await quota_service.ensure_can_publish(project_id)
     except QuotaExceededError as exc:
