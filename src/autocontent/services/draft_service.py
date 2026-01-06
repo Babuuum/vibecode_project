@@ -15,6 +15,7 @@ from autocontent.repos import (
 )
 from autocontent.services.llm_gateway import LLMGateway
 from autocontent.services.quota import NoopQuotaService, QuotaBackend
+from autocontent.services.draft_templates import render_prompt
 from autocontent.shared.text import compute_draft_hash as _compute_draft_hash, normalize_text
 
 
@@ -81,7 +82,13 @@ class DraftService:
                 item.facts_cache = facts
 
             content = await self._render_post(
-                facts=facts, link=item.link, language=language, tone=tone, niche=niche, max_post_len=max_post_len
+                facts=facts,
+                link=item.link,
+                language=language,
+                tone=tone,
+                niche=niche,
+                max_post_len=max_post_len,
+                template_id=template_id,
             )
         except Exception as exc:  # noqa: BLE001
             raise DraftGenerationError("LLM недоступен. Попробуйте позже.") from exc
@@ -117,14 +124,23 @@ class DraftService:
         return normalize_text(response.content)
 
     async def _render_post(
-        self, facts: str, link: str, language: str, tone: str, niche: str, max_post_len: int
+        self,
+        facts: str,
+        link: str,
+        language: str,
+        tone: str,
+        niche: str,
+        max_post_len: int,
+        template_id: str | None,
     ) -> str:
-        prompt = (
-            f"Language: {language}. Tone: {tone}. Niche: {niche}.\n"
-            "Create a short Telegram post using the facts and include the source link at the end.\n"
-            f"Facts:\n{facts}\n"
-            f"Link: {link}\n"
-            "Return plain text only."
+        prompt = render_prompt(
+            template_id=template_id,
+            facts=facts,
+            link=link,
+            language=language,
+            tone=tone,
+            niche=niche,
+            max_post_len=max_post_len,
         )
         response: LLMResponse = await self._llm_gateway.generate(
             prompt=prompt, max_post_len=max_post_len, seed=1

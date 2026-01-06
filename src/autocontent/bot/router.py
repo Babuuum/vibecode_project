@@ -30,12 +30,14 @@ from autocontent.integrations.task_queue import CeleryTaskQueue, TaskQueue
 from autocontent.repos import (
     ChannelBindingRepository,
     ProjectRepository,
+    ProjectSettingsRepository,
     ScheduleRepository,
     SourceItemRepository,
     SourceRepository,
 )
 from autocontent.services import ChannelBindingService, DraftService, ProjectService, SourceService
 from autocontent.services.channel_binding import ChannelBindingNotFoundError
+from autocontent.services.draft_templates import DEFAULT_TEMPLATE_ID, TEMPLATE_PRESETS, get_template
 from autocontent.services.quota import (
     NoopQuotaService,
     QuotaBackend,
@@ -75,6 +77,7 @@ NICHE_OPTIONS = ["tech", "marketing", "lifestyle"]
 TONE_OPTIONS = ["friendly", "formal", "casual"]
 CHANNEL_MENU = ["Настройки", "Подключить канал", "Проверить"]
 DRAFT_MENU = ["Сгенерировать сейчас", "Черновики"]
+TEMPLATE_MENU = [f"Шаблон: {preset.template_id}" for preset in TEMPLATE_PRESETS.values()] + ["Назад"]
 AUTPOST_MENU = [
     "Автопостинг: Вкл",
     "Автопостинг: Выкл",
@@ -84,7 +87,7 @@ AUTPOST_MENU = [
     "Назад",
 ]
 SLOT_PRESETS = ["10:00,14:00,18:00", "09:00,12:00,15:00,18:00", "08:00,12:00,20:00"]
-SOURCE_MENU = ["Добавить RSS", "Добавить URL", "Список источников", "Fetch now", "Автопостинг"] + DRAFT_MENU + CHANNEL_MENU
+SOURCE_MENU = ["Добавить RSS", "Добавить URL", "Список источников", "Fetch now", "Автопостинг", "Шаблоны"] + DRAFT_MENU + CHANNEL_MENU
 SOURCE_STATUS_MENU = ["Статус источников"] + SOURCE_MENU
 COOLDOWN_TTL_SECONDS = 45
 STATUS_DRAFTS_LIMIT = 5
@@ -394,6 +397,54 @@ async def settings_handler(message: Message, state: FSMContext, session: AsyncSe
         )
     except SQLAlchemyError:
         await _handle_db_error(message)
+
+
+@router.message(F.text == "Шаблоны")
+async def template_menu_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
+    project_id = await _resolve_project_id(message, state, session)
+    if not project_id:
+        await message.answer("Проект не найден. Начни с /start.")
+        return
+
+    settings_repo = ProjectSettingsRepository(session)
+    settings = await settings_repo.get_by_project_id(project_id)
+    if not settings:
+        await message.answer("Настройки не найдены. Пройди онбординг: /start.")
+        return
+
+    current_id = settings.template_id or DEFAULT_TEMPLATE_ID
+    current_template = get_template(current_id)
+    lines = [f"Текущий шаблон: {current_template.template_id} — {current_template.title}"]
+    lines.append("Доступные шаблоны:")
+    for preset in TEMPLATE_PRESETS.values():
+        lines.append(f"- {preset.template_id}: {preset.title}")
+
+    await message.answer("\n".join(lines), reply_markup=_build_keyboard(TEMPLATE_MENU))
+
+
+@router.message(F.text.startswith("Шаблон: "))
+async def template_select_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
+    project_id = await _resolve_project_id(message, state, session)
+    if not project_id:
+        await message.answer("Проект не найден. Начни с /start.")
+        return
+
+    template_id = message.text.split(":", 1)[1].strip()
+    if template_id not in TEMPLATE_PRESETS:
+        await message.answer("Неизвестный шаблон. Выбери из списка.", reply_markup=_build_keyboard(TEMPLATE_MENU))
+        return
+
+    settings_repo = ProjectSettingsRepository(session)
+    settings = await settings_repo.update_template_id(project_id, template_id)
+    if not settings:
+        await message.answer("Настройки не найдены. Пройди онбординг: /start.")
+        return
+
+    preset = TEMPLATE_PRESETS[template_id]
+    await message.answer(
+        f"Шаблон обновлен: {preset.template_id} — {preset.title}.",
+        reply_markup=_build_keyboard(SOURCE_MENU),
+    )
 
 
 @router.message(F.text == "Автопостинг")
