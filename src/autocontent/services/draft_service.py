@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from autocontent.config import Settings
 from autocontent.domain import PostDraft, SourceItem
@@ -15,11 +15,13 @@ from autocontent.repos import (
     SourceRepository,
     UsageCounterRepository,
 )
+from autocontent.services.draft_templates import render_prompt
 from autocontent.services.llm_gateway import LLMGateway
 from autocontent.services.quota import NoopQuotaService, QuotaBackend
-from autocontent.services.draft_templates import render_prompt
 from autocontent.shared.text import (
     compute_draft_hash as _compute_draft_hash,
+)
+from autocontent.shared.text import (
     normalize_text,
     sanitize_raw_text,
 )
@@ -51,7 +53,9 @@ class DraftService:
             self._llm_gateway = LLMGateway(settings=self._settings, client=llm_client)
         self._quota = quota_service or NoopQuotaService()
 
-    async def generate_draft(self, source_item_id: int, template_id: str | None = None) -> PostDraft:
+    async def generate_draft(
+        self, source_item_id: int, template_id: str | None = None
+    ) -> PostDraft:
         logger = structlog.get_logger(__name__)
         item = await self._items.get_by_id(source_item_id)
         if not item:
@@ -76,7 +80,7 @@ class DraftService:
         tone = settings.tone if settings else "friendly"
         niche = settings.niche if settings else "general"
 
-        since = datetime.now(timezone.utc) - timedelta(days=self._settings.duplicate_window_days)
+        since = datetime.now(UTC) - timedelta(days=self._settings.duplicate_window_days)
         draft_hash = compute_draft_hash(
             project_id=source.project_id,
             source_item_id=item.id,
@@ -129,7 +133,9 @@ class DraftService:
     async def list_drafts(self, project_id: int, limit: int = 10) -> list[PostDraft]:
         return await self._drafts.list_latest(project_id, limit=limit)
 
-    async def list_by_status(self, project_id: int, status: str, limit: int = 10) -> list[PostDraft]:
+    async def list_by_status(
+        self, project_id: int, status: str, limit: int = 10
+    ) -> list[PostDraft]:
         return await self._drafts.list_by_project(project_id, status=status, limit=limit)
 
     async def get_draft(self, draft_id: int) -> PostDraft | None:
@@ -206,9 +212,11 @@ class DraftService:
         return content
 
 
-def compute_draft_hash(project_id: int, source_item_id: int, template_id: str | None, raw_text: str) -> str:
+def compute_draft_hash(
+    project_id: int, source_item_id: int, template_id: str | None, raw_text: str
+) -> str:
     return _compute_draft_hash(project_id, source_item_id, template_id, raw_text)
 
 
 def _today_utc() -> date:
-    return datetime.now(timezone.utc).date()
+    return datetime.now(UTC).date()

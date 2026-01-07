@@ -1,11 +1,18 @@
+from datetime import UTC, datetime
+
 import pytest
-from datetime import datetime, timezone
 
 from autocontent.config import Settings
 from autocontent.integrations.llm_client import LLMClient, LLMResponse, MockLLMClient
-from autocontent.repos import ProjectRepository, ProjectSettingsRepository, SourceItemRepository, SourceRepository, UserRepository
+from autocontent.repos import (
+    ProjectRepository,
+    ProjectSettingsRepository,
+    SourceItemRepository,
+    SourceRepository,
+    UserRepository,
+)
 from autocontent.services.draft_service import DraftService, compute_draft_hash
-from autocontent.services.quota import QuotaService, QuotaExceededError
+from autocontent.services.quota import QuotaExceededError, QuotaService
 
 
 class FakeLLM(LLMClient):
@@ -39,14 +46,16 @@ async def test_generate_draft_limits_length_and_hash(session) -> None:
 
     user = await user_repo.create_user(tg_id=321)
     project = await project_repo.create_project(owner_user_id=user.id, title="P", tz="UTC")
-    await settings_repo.create_settings(project_id=project.id, language="ru", niche="tech", tone="friendly", max_post_len=50)
+    await settings_repo.create_settings(
+        project_id=project.id, language="ru", niche="tech", tone="friendly", max_post_len=50
+    )
     source = await source_repo.create_source(project_id=project.id, url="http://example.com/feed")
     item = await item_repo.create_item(
         source_id=source.id,
         external_id="1",
         link="http://example.com/1",
         title="Title",
-        published_at=datetime.now(timezone.utc),
+        published_at=datetime.now(UTC),
         raw_text="A" * 200,
         content_hash="hash1",
     )
@@ -72,14 +81,16 @@ async def test_generate_draft_with_mock_llm(session) -> None:
 
     user = await user_repo.create_user(tg_id=654)
     project = await project_repo.create_project(owner_user_id=user.id, title="P2", tz="UTC")
-    await settings_repo.create_settings(project_id=project.id, language="en", niche="tech", tone="formal", max_post_len=120)
+    await settings_repo.create_settings(
+        project_id=project.id, language="en", niche="tech", tone="formal", max_post_len=120
+    )
     source = await source_repo.create_source(project_id=project.id, url="http://example.com/feed")
     item = await item_repo.create_item(
         source_id=source.id,
         external_id="2",
         link="http://example.com/2",
         title="Another title",
-        published_at=datetime.now(timezone.utc),
+        published_at=datetime.now(UTC),
         raw_text="Hello world from RSS item",
         content_hash="hash2",
     )
@@ -105,7 +116,9 @@ async def test_generate_draft_blocked_by_quota(session) -> None:
 
     user = await user_repo.create_user(tg_id=777)
     project = await project_repo.create_project(owner_user_id=user.id, title="QP", tz="UTC")
-    await settings_repo.create_settings(project_id=project.id, language="en", niche="tech", tone="formal")
+    await settings_repo.create_settings(
+        project_id=project.id, language="en", niche="tech", tone="formal"
+    )
     source = await source_repo.create_source(project_id=project.id, url="http://example.com/quota")
     item = await item_repo.create_item(
         source_id=source.id,
@@ -122,7 +135,12 @@ async def test_generate_draft_blocked_by_quota(session) -> None:
     redis = FakeRedis()
     settings = Settings(drafts_per_day=1)
     quota = QuotaService(redis, settings=settings)
-    service = DraftService(session, llm_client=MockLLMClient(default_max_tokens=10), settings=settings, quota_service=quota)
+    service = DraftService(
+        session,
+        llm_client=MockLLMClient(default_max_tokens=10),
+        settings=settings,
+        quota_service=quota,
+    )
 
     await service.generate_draft(item.id)
     with pytest.raises(QuotaExceededError):

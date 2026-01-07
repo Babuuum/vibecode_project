@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import List
-
 from sqlalchemy import (
     Boolean,
     Date,
@@ -27,7 +24,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     tg_id: Mapped[int] = mapped_column(Integer, unique=True, nullable=False)
 
-    projects: Mapped[List["Project"]] = relationship(back_populates="owner", cascade="all, delete")
+    projects: Mapped[list[Project]] = relationship(back_populates="owner", cascade="all, delete")
 
 
 class Project(Base):
@@ -40,7 +37,7 @@ class Project(Base):
     status: Mapped[str] = mapped_column(String(length=32), nullable=False, default="active")
 
     owner: Mapped[User] = relationship(back_populates="projects")
-    settings: Mapped["ProjectSettings"] = relationship(
+    settings: Mapped[ProjectSettings] = relationship(
         back_populates="project", uselist=False, cascade="all, delete-orphan"
     )
 
@@ -49,9 +46,7 @@ class ProjectSettings(Base):
     __tablename__ = "project_settings"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(
-        ForeignKey("projects.id"), nullable=False, unique=True
-    )
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False, unique=True)
     language: Mapped[str] = mapped_column(String(length=16), nullable=False)
     niche: Mapped[str] = mapped_column(String(length=128), nullable=False)
     tone: Mapped[str] = mapped_column(String(length=64), nullable=False)

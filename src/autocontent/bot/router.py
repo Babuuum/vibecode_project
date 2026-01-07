@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Iterable
-from datetime import datetime, timezone
+from collections.abc import Iterable
+from datetime import UTC, datetime
+from typing import Any
 
 from aiogram import F, Router
 from aiogram.enums import ParseMode
@@ -21,13 +22,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autocontent.bot.source_states import SourceStates
+from autocontent.config import Settings
+from autocontent.integrations.task_queue import CeleryTaskQueue, TaskQueue
 from autocontent.integrations.telegram_client import (
     ChannelForbiddenError,
     ChannelNotFoundError,
     TelegramClient,
     TelegramClientError,
 )
-from autocontent.integrations.task_queue import CeleryTaskQueue, TaskQueue
 from autocontent.repos import (
     ChannelBindingRepository,
     ProjectRepository,
@@ -48,8 +50,11 @@ from autocontent.services.quota import (
 )
 from autocontent.services.source_service import DuplicateSourceError
 from autocontent.shared.cooldown import CooldownStore, InMemoryCooldownStore, RedisCooldownStore
-from autocontent.shared.idempotency import IdempotencyStore, InMemoryIdempotencyStore, RedisIdempotencyStore
-from autocontent.config import Settings
+from autocontent.shared.idempotency import (
+    IdempotencyStore,
+    InMemoryIdempotencyStore,
+    RedisIdempotencyStore,
+)
 
 try:
     from redis import asyncio as aioredis
@@ -79,7 +84,9 @@ NICHE_OPTIONS = ["tech", "marketing", "lifestyle"]
 TONE_OPTIONS = ["friendly", "formal", "casual"]
 CHANNEL_MENU = ["Настройки", "Подключить канал", "Проверить"]
 DRAFT_MENU = ["Сгенерировать сейчас", "Черновики", "На одобрение"]
-TEMPLATE_MENU = [f"Шаблон: {preset.template_id}" for preset in TEMPLATE_PRESETS.values()] + ["Назад"]
+TEMPLATE_MENU = [f"Шаблон: {preset.template_id}" for preset in TEMPLATE_PRESETS.values()] + [
+    "Назад"
+]
 AUTPOST_MENU = [
     "Автопостинг: Вкл",
     "Автопостинг: Выкл",
@@ -89,15 +96,19 @@ AUTPOST_MENU = [
     "Назад",
 ]
 SLOT_PRESETS = ["10:00,14:00,18:00", "09:00,12:00,15:00,18:00", "08:00,12:00,20:00"]
-SOURCE_MENU = [
-    "Добавить RSS",
-    "Добавить URL",
-    "Список источников",
-    "Fetch now",
-    "Автопостинг",
-    "Шаблоны",
-    "Расходы/Квоты",
-] + DRAFT_MENU + CHANNEL_MENU
+SOURCE_MENU = (
+    [
+        "Добавить RSS",
+        "Добавить URL",
+        "Список источников",
+        "Fetch now",
+        "Автопостинг",
+        "Шаблоны",
+        "Расходы/Квоты",
+    ]
+    + DRAFT_MENU
+    + CHANNEL_MENU
+)
 SOURCE_STATUS_MENU = ["Статус источников"] + SOURCE_MENU
 COOLDOWN_TTL_SECONDS = 45
 STATUS_DRAFTS_LIMIT = 5
@@ -225,7 +236,9 @@ async def start_handler(message: Message, state: FSMContext, session: AsyncSessi
 @router.message(OnboardingStates.language)
 async def language_handler(message: Message, state: FSMContext) -> Any:
     if message.text not in LANGUAGE_OPTIONS:
-        await message.answer("Выбери язык из списка.", reply_markup=_build_keyboard(LANGUAGE_OPTIONS))
+        await message.answer(
+            "Выбери язык из списка.", reply_markup=_build_keyboard(LANGUAGE_OPTIONS)
+        )
         return
 
     await state.update_data(language=message.text)
@@ -247,7 +260,9 @@ async def niche_handler(message: Message, state: FSMContext) -> Any:
 @router.message(OnboardingStates.tone)
 async def tone_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
     if message.text not in TONE_OPTIONS:
-        await message.answer("Выбери тональность из списка.", reply_markup=_build_keyboard(TONE_OPTIONS))
+        await message.answer(
+            "Выбери тональность из списка.", reply_markup=_build_keyboard(TONE_OPTIONS)
+        )
         return
 
     data = await state.get_data()
@@ -309,7 +324,9 @@ async def status_handler(message: Message, state: FSMContext, session: AsyncSess
     channel_binding = await channel_repo.get_by_project_id(project_id)
     sources = await source_repo.list_by_project(project_id)
     drafts = await drafts_service.list_drafts(project_id, limit=STATUS_DRAFTS_LIMIT)
-    approval_drafts = await drafts_service.list_by_status(project_id, status="needs_approval", limit=50)
+    approval_drafts = await drafts_service.list_by_status(
+        project_id, status="needs_approval", limit=50
+    )
     project_settings = await settings_repo.get_by_project_id(project_id)
     schedule = await schedule_repo.get_by_project_id(project_id)
 
@@ -360,7 +377,7 @@ async def status_handler(message: Message, state: FSMContext, session: AsyncSess
             f"slots={_format_slots(schedule.slots_json)}, "
             f"limit/day={schedule.per_day_limit}"
         )
-    usage = await usage_repo.get_by_project_day(project_id, datetime.now(timezone.utc).date())
+    usage = await usage_repo.get_by_project_day(project_id, datetime.now(UTC).date())
     if usage:
         lines.append(
             "Расходы сегодня: "
@@ -392,7 +409,9 @@ async def status_handler(message: Message, state: FSMContext, session: AsyncSess
     await message.answer("\n".join(lines), reply_markup=_build_keyboard(SOURCE_MENU))
 
 
-async def _resolve_project_id(message: Message, state: FSMContext, session: AsyncSession) -> int | None:
+async def _resolve_project_id(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> int | None:
     data = await state.get_data()
     project_id = data.get("project_id")
     if project_id:
@@ -461,7 +480,9 @@ async def template_menu_handler(message: Message, state: FSMContext, session: As
 
 
 @router.message(F.text.startswith("Шаблон: "))
-async def template_select_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
+async def template_select_handler(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> Any:
     project_id = await _resolve_project_id(message, state, session)
     if not project_id:
         await message.answer("Проект не найден. Начни с /start.")
@@ -469,7 +490,9 @@ async def template_select_handler(message: Message, state: FSMContext, session: 
 
     template_id = message.text.split(":", 1)[1].strip()
     if template_id not in TEMPLATE_PRESETS:
-        await message.answer("Неизвестный шаблон. Выбери из списка.", reply_markup=_build_keyboard(TEMPLATE_MENU))
+        await message.answer(
+            "Неизвестный шаблон. Выбери из списка.", reply_markup=_build_keyboard(TEMPLATE_MENU)
+        )
         return
 
     settings_repo = ProjectSettingsRepository(session)
@@ -493,7 +516,7 @@ async def usage_handler(message: Message, state: FSMContext, session: AsyncSessi
         return
 
     usage_repo = UsageCounterRepository(session)
-    day = datetime.now(timezone.utc).date()
+    day = datetime.now(UTC).date()
     usage = await usage_repo.get_by_project_day(project_id, day)
     drafts_generated = usage.drafts_generated if usage else 0
     posts_published = usage.posts_published if usage else 0
@@ -547,7 +570,9 @@ async def autopost_show_handler(message: Message, state: FSMContext, session: As
 
 
 @router.message(F.text == "Автопостинг: Вкл")
-async def autopost_enable_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
+async def autopost_enable_handler(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> Any:
     project_id = await _resolve_project_id(message, state, session)
     if not project_id:
         await message.answer("Проект не найден. Начни с /start.")
@@ -587,7 +612,9 @@ async def autopost_enable_handler(message: Message, state: FSMContext, session: 
 
 
 @router.message(F.text == "Автопостинг: Выкл")
-async def autopost_disable_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
+async def autopost_disable_handler(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> Any:
     project_id = await _resolve_project_id(message, state, session)
     if not project_id:
         await message.answer("Проект не найден. Начни с /start.")
@@ -620,7 +647,9 @@ async def autopost_slots_handler(message: Message, state: FSMContext) -> Any:
 
 
 @router.message(ScheduleStates.waiting_slots)
-async def autopost_slots_save_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
+async def autopost_slots_save_handler(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> Any:
     text = (message.text or "").strip()
     if text == "Назад":
         await state.set_state(None)
@@ -676,7 +705,9 @@ async def autopost_limit_handler(message: Message, state: FSMContext) -> Any:
 
 
 @router.message(ScheduleStates.waiting_limit)
-async def autopost_limit_save_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
+async def autopost_limit_save_handler(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> Any:
     raw = (message.text or "").strip()
     if not raw.isdigit():
         await message.answer("Нужна цифра от 1 до 20.")
@@ -746,7 +777,9 @@ async def channel_save_handler(
         return
 
     service = ChannelBindingService(session, telegram_client)
-    await service.save_binding(project_id=project_id, channel_id=channel_id, channel_username=channel_id)
+    await service.save_binding(
+        project_id=project_id, channel_id=channel_id, channel_username=channel_id
+    )
     await state.clear()
     await message.answer(
         "Канал сохранен. Нажми «Проверить», чтобы отправить тестовое сообщение.",
@@ -769,12 +802,14 @@ async def channel_check_handler(
     service = ChannelBindingService(session, telegram_client)
     try:
         await service.check_binding(project_id)
-        await message.answer("Канал подключен и доступен ✅", reply_markup=_build_keyboard(CHANNEL_MENU))
+        await message.answer(
+            "Канал подключен и доступен ✅", reply_markup=_build_keyboard(CHANNEL_MENU)
+        )
     except ChannelBindingNotFoundError:
         await message.answer("Канал не подключен. Нажмите «Подключить канал».")
     except ChannelForbiddenError:
         await message.answer(
-            "Нет прав писать в канал. Добавьте бота админом и выдайте право «Публиковать».",
+            "Бот не может писать в канал. Добавьте бота админом и выдайте право «Публиковать».",
         )
     except ChannelNotFoundError:
         await message.answer("Канал не найден. Проверь @username/ID и что бот добавлен в канал.")
@@ -787,7 +822,9 @@ async def channel_check_handler(
 @router.message(F.text == "Добавить RSS")
 async def add_rss_handler(message: Message, state: FSMContext) -> Any:
     await state.set_state(SourceStates.waiting_rss_url)
-    await message.answer("Пришли RSS URL для добавления.", reply_markup=_build_keyboard(SOURCE_MENU))
+    await message.answer(
+        "Пришли RSS URL для добавления.", reply_markup=_build_keyboard(SOURCE_MENU)
+    )
 
 
 @router.message(SourceStates.waiting_rss_url)
@@ -812,7 +849,9 @@ async def save_rss_handler(message: Message, state: FSMContext, session: AsyncSe
             reply_markup=_build_keyboard(SOURCE_STATUS_MENU),
         )
     except DuplicateSourceError:
-        await message.answer("Такой источник уже добавлен.", reply_markup=_build_keyboard(SOURCE_MENU))
+        await message.answer(
+            "Такой источник уже добавлен.", reply_markup=_build_keyboard(SOURCE_MENU)
+        )
     except QuotaExceededError:
         await message.answer(
             "Лимит источников исчерпан. Удали старые или подожди до обновления лимитов.",
@@ -825,7 +864,9 @@ async def save_rss_handler(message: Message, state: FSMContext, session: AsyncSe
 @router.message(F.text == "Добавить URL")
 async def add_url_handler(message: Message, state: FSMContext) -> Any:
     await state.set_state(SourceStates.waiting_page_url)
-    await message.answer("Пришли URL страницы для добавления.", reply_markup=_build_keyboard(SOURCE_MENU))
+    await message.answer(
+        "Пришли URL страницы для добавления.", reply_markup=_build_keyboard(SOURCE_MENU)
+    )
 
 
 @router.message(SourceStates.waiting_page_url)
@@ -850,7 +891,9 @@ async def save_url_handler(message: Message, state: FSMContext, session: AsyncSe
             reply_markup=_build_keyboard(SOURCE_STATUS_MENU),
         )
     except DuplicateSourceError:
-        await message.answer("Такой источник уже добавлен.", reply_markup=_build_keyboard(SOURCE_MENU))
+        await message.answer(
+            "Такой источник уже добавлен.", reply_markup=_build_keyboard(SOURCE_MENU)
+        )
     except QuotaExceededError:
         await message.answer(
             "Лимит источников исчерпан. Удали старые или подожди до обновления лимитов.",
@@ -858,6 +901,7 @@ async def save_url_handler(message: Message, state: FSMContext, session: AsyncSe
         )
     except SQLAlchemyError:
         await _handle_db_error(message)
+
 
 @router.message(F.text == "Список источников")
 async def list_sources_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
@@ -889,7 +933,9 @@ async def sources_status_handler(message: Message, state: FSMContext, session: A
     service = SourceService(session)
     sources = await service.list_sources(project_id)
     if not sources:
-        await message.answer("Источники не добавлены.", reply_markup=_build_keyboard(SOURCE_STATUS_MENU))
+        await message.answer(
+            "Источники не добавлены.", reply_markup=_build_keyboard(SOURCE_STATUS_MENU)
+        )
         return
 
     lines = []
@@ -972,7 +1018,7 @@ async def generate_now_handler(
     quota_service = _resolve_quota_service(quota_service)
     try:
         await quota_service.ensure_can_generate(project_id)
-    except QuotaExceededError as exc:
+    except QuotaExceededError:
         await message.answer(
             "Лимит генераций исчерпан. Подожди до обновления лимитов и попробуй позже.",
         )
@@ -1010,7 +1056,9 @@ async def drafts_list_handler(message: Message, state: FSMContext, session: Asyn
 
 
 @router.message(F.text == "На одобрение")
-async def drafts_approval_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
+async def drafts_approval_handler(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> Any:
     project_id = await _resolve_project_id(message, state, session)
     if not project_id:
         await message.answer("Проект не найден, начните /start.")
@@ -1090,7 +1138,7 @@ async def publish_draft_handler(
     quota_service = _resolve_quota_service(quota_service)
     try:
         await quota_service.ensure_can_publish(project_id)
-    except QuotaExceededError as exc:
+    except QuotaExceededError:
         await callback.answer("Лимит публикаций исчерпан. Подожди до обновления лимитов.")
         return
 
@@ -1128,4 +1176,6 @@ async def reject_draft_handler(
 
     await draft_service.reject_draft(draft_id)
     await callback.answer("Драфт отклонен.")
-    await callback.message.answer("Драфт помечен как отклоненный.", reply_markup=_build_keyboard(SOURCE_MENU))
+    await callback.message.answer(
+        "Драфт помечен как отклоненный.", reply_markup=_build_keyboard(SOURCE_MENU)
+    )

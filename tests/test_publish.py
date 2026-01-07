@@ -1,5 +1,4 @@
 import pytest
-from dataclasses import dataclass
 
 from autocontent.integrations.telegram_client import TelegramClient
 from autocontent.repos import (
@@ -12,8 +11,8 @@ from autocontent.repos import (
 )
 from autocontent.services.draft_service import compute_draft_hash
 from autocontent.services.publication_service import PublicationService
-from autocontent.shared.text import compute_content_hash
 from autocontent.shared.idempotency import InMemoryIdempotencyStore
+from autocontent.shared.text import compute_content_hash
 
 
 class FakeTelegramClient(TelegramClient):
@@ -39,7 +38,9 @@ async def test_publish_draft_idempotent(session) -> None:
 
     user = await user_repo.create_user(tg_id=1)
     project = await project_repo.create_project(owner_user_id=user.id, title="P", tz="UTC")
-    await channel_repo.create_or_update(project_id=project.id, channel_id="@ch", channel_username="@ch")
+    await channel_repo.create_or_update(
+        project_id=project.id, channel_id="@ch", channel_username="@ch"
+    )
     await channel_repo.update_status(project_id=project.id, status="connected", last_error=None)
     source = await source_repo.create_source(project_id=project.id, url="http://example.com")
     item = await item_repo.create_item(

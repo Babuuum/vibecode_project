@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Awaitable, Callable, Protocol
+from typing import Protocol
 
 import httpx
 import structlog
@@ -86,7 +87,9 @@ class RealLLMClient:
     async def _send_http(self, payload: dict) -> str:
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
-                f"{self.base_url}/generate", json=payload, headers={"Authorization": f"Bearer {self.api_key}"}
+                f"{self.base_url}/generate",
+                json=payload,
+                headers={"Authorization": f"Bearer {self.api_key}"},
             )
             response.raise_for_status()
             data = response.json()

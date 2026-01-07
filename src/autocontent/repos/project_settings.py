@@ -76,7 +76,9 @@ class ProjectSettingsRepository:
             autopost_enabled=autopost_enabled,
         )
 
-    async def update_template_id(self, project_id: int, template_id: str | None) -> ProjectSettings | None:
+    async def update_template_id(
+        self, project_id: int, template_id: str | None
+    ) -> ProjectSettings | None:
         settings = await self.get_by_project_id(project_id)
         if not settings:
             return None

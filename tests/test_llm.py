@@ -5,7 +5,12 @@ import httpx
 import pytest
 
 from autocontent.config import Settings
-from autocontent.integrations.llm_client import LLMRequest, LLMResponse, MockLLMClient, RealLLMClient
+from autocontent.integrations.llm_client import (
+    LLMRequest,
+    LLMResponse,
+    MockLLMClient,
+    RealLLMClient,
+)
 from autocontent.services.llm_gateway import LLMGateway
 
 

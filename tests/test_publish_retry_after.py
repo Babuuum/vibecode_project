@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -42,7 +42,9 @@ async def test_publish_retries_with_retry_after(session) -> None:
 
     user = await user_repo.create_user(tg_id=501)
     project = await project_repo.create_project(owner_user_id=user.id, title="P", tz="UTC")
-    await channel_repo.create_or_update(project_id=project.id, channel_id="@ch", channel_username="@ch")
+    await channel_repo.create_or_update(
+        project_id=project.id, channel_id="@ch", channel_username="@ch"
+    )
     await channel_repo.update_status(project.id, status="connected")
     source = await source_repo.create_source(project_id=project.id, url="http://example.com/feed")
     item = await item_repo.create_item(
@@ -50,7 +52,7 @@ async def test_publish_retries_with_retry_after(session) -> None:
         external_id="x",
         link="http://example.com/1",
         title="Title",
-        published_at=datetime.now(timezone.utc),
+        published_at=datetime.now(UTC),
         raw_text="Body",
         content_hash=compute_content_hash("http://example.com/1", "Title", "Body"),
     )

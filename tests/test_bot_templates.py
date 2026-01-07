@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, List
+from typing import Any
 
 import pytest
 from aiogram.fsm.context import FSMContext
@@ -19,7 +19,7 @@ class FakeFromUser:
 class FakeMessage:
     text: str
     from_user: FakeFromUser
-    answers: List[str] = field(default_factory=list)
+    answers: list[str] = field(default_factory=list)
 
     async def answer(self, text: str, **kwargs: Any) -> None:  # noqa: ARG002
         self.answers.append(text)
@@ -33,7 +33,9 @@ async def test_template_select_updates_settings(session) -> None:
 
     user = await user_repo.create_user(tg_id=910)
     project = await project_repo.create_project(owner_user_id=user.id, title="P", tz="UTC")
-    await settings_repo.create_settings(project_id=project.id, language="en", niche="tech", tone="formal")
+    await settings_repo.create_settings(
+        project_id=project.id, language="en", niche="tech", tone="formal"
+    )
 
     storage = MemoryStorage()
     state = FSMContext(storage, StorageKey(bot_id=0, user_id=user.id, chat_id=user.id))

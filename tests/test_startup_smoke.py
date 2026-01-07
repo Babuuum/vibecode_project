@@ -15,5 +15,5 @@ def test_run_invokes_uvicorn(monkeypatch) -> None:
     main.run()
 
     assert captured["args"][0] == "autocontent.api.main:app"
-    assert captured["kwargs"]["host"] == "0.0.0.0"
+    assert captured["kwargs"]["host"] == "0.0.0.0"  # noqa: S104
     assert captured["kwargs"]["port"] == 8000

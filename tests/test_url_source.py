@@ -1,8 +1,12 @@
 import pytest
 
-from autocontent.repos import ProjectRepository, SourceItemRepository, SourceRepository, UserRepository
+from autocontent.repos import (
+    ProjectRepository,
+    SourceItemRepository,
+    SourceRepository,
+    UserRepository,
+)
 from autocontent.services.rss_fetcher import extract_text_from_html, fetch_and_save_source
-
 
 HTML_SAMPLE = """
 <html>
@@ -43,7 +47,9 @@ async def test_url_source_fetch_and_dedup(session) -> None:
 
     user = await user_repo.create_user(tg_id=950)
     project = await project_repo.create_project(owner_user_id=user.id, title="P", tz="UTC")
-    source = await source_repo.create_source(project_id=project.id, url="http://example.com/page", type="url")
+    source = await source_repo.create_source(
+        project_id=project.id, url="http://example.com/page", type="url"
+    )
 
     url_client = FakeURLClient(HTML_SAMPLE)
     _, saved_first = await fetch_and_save_source(

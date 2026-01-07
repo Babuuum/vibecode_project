@@ -1,25 +1,25 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
+import structlog
 from aiogram import Bot
 from celery import current_task
-import structlog
 
 from autocontent.config import Settings
 from autocontent.infrastructure.celery_app import celery_app
+from autocontent.integrations.task_queue import CeleryTaskQueue
 from autocontent.integrations.telegram_client import AiogramTelegramClient, TransientTelegramError
+from autocontent.repos import ScheduleRepository, SourceRepository
 from autocontent.services.draft_service import DraftService
 from autocontent.services.publication_service import PublicationService
+from autocontent.services.quota import QuotaService
+from autocontent.services.rate_limit import RedisRateLimiter
 from autocontent.services.rss_fetcher import fetch_and_save_source
 from autocontent.shared.db import create_engine_from_settings, create_session_factory
 from autocontent.shared.idempotency import InMemoryIdempotencyStore, RedisIdempotencyStore
 from autocontent.shared.lock import InMemoryLockStore, RedisLockStore
-from autocontent.services.quota import QuotaService
-from autocontent.services.rate_limit import RedisRateLimiter
-from autocontent.repos import ScheduleRepository, SourceRepository
-from autocontent.integrations.task_queue import CeleryTaskQueue
 from autocontent.shared.logging import bind_log_context, clear_log_context, configure_logging
 
 
@@ -28,6 +28,7 @@ def _safe_job_id() -> str | None:
         return current_task.request.id
     except Exception:
         return None
+
 
 try:
     from redis import asyncio as aioredis
@@ -41,6 +42,7 @@ def fetch_source_task(source_id: int) -> None:
     logger = structlog.get_logger(__name__)
     bind_log_context(job_id=_safe_job_id(), source_id=source_id)
     logger.info("task_start", task_name="fetch_source")
+
     async def _run() -> None:
         settings = Settings()
         engine = create_engine_from_settings(settings)
@@ -50,8 +52,8 @@ def fetch_source_task(source_id: int) -> None:
             try:
                 redis_client = aioredis.from_url(settings.redis_url)
                 lock_store = RedisLockStore(redis_client)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("redis_lock_init_failed", error=str(exc))
         async with session_factory() as session:
             await fetch_and_save_source(
                 source_id,
@@ -74,6 +76,7 @@ def fetch_all_sources_task() -> None:
     logger = structlog.get_logger(__name__)
     bind_log_context(job_id=_safe_job_id())
     logger.info("task_start", task_name="fetch_all_sources")
+
     async def _run() -> None:
         settings = Settings()
         engine = create_engine_from_settings(settings)
@@ -83,15 +86,15 @@ def fetch_all_sources_task() -> None:
             try:
                 redis_client = aioredis.from_url(settings.redis_url)
                 lock_store = RedisLockStore(redis_client)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("redis_lock_init_failed", error=str(exc))
         async with session_factory() as session:
             repo = SourceRepository(session)
             sources = await repo.list_all()
             for src in sources:
                 if src.status == "broken" and src.last_fetch_at:
                     backoff_seconds = src.fetch_interval_min * 3 * 60
-                    delta = (datetime.now(timezone.utc) - src.last_fetch_at).total_seconds()
+                    delta = (datetime.now(UTC) - src.last_fetch_at).total_seconds()
                     if delta < backoff_seconds:
                         continue
                 await fetch_and_save_source(
@@ -115,6 +118,7 @@ def generate_draft_task(source_item_id: int) -> None:
     logger = structlog.get_logger(__name__)
     bind_log_context(job_id=_safe_job_id(), source_item_id=source_item_id)
     logger.info("task_start", task_name="generate_draft")
+
     async def _run() -> None:
         settings = Settings()
         engine = create_engine_from_settings(settings)
@@ -124,7 +128,8 @@ def generate_draft_task(source_item_id: int) -> None:
             try:
                 redis_client = aioredis.from_url(settings.redis_url)
                 quota_service = QuotaService(redis_client, settings=settings)
-            except Exception:
+            except Exception as exc:
+                logger.warning("redis_quota_init_failed", error=str(exc))
                 quota_service = None
         async with session_factory() as session:
             service = DraftService(session, quota_service=quota_service)
@@ -148,6 +153,7 @@ def publish_draft_task(draft_id: int) -> None:
     logger = structlog.get_logger(__name__)
     bind_log_context(job_id=_safe_job_id(), draft_id=draft_id)
     logger.info("task_start", task_name="publish_draft")
+
     async def _run() -> None:
         settings = Settings()
         engine = create_engine_from_settings(settings)
@@ -161,8 +167,8 @@ def publish_draft_task(draft_id: int) -> None:
                 idempotency_store = RedisIdempotencyStore(redis_client)
                 quota_service = QuotaService(redis_client, settings=settings)
                 rate_limiter = RedisRateLimiter(redis_client, settings=settings)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("redis_publish_init_failed", error=str(exc))
 
         async with session_factory() as session:
             bot = Bot(settings.bot_token, parse_mode="HTML")
@@ -190,6 +196,7 @@ def publish_due_drafts_task() -> None:
     logger = structlog.get_logger(__name__)
     bind_log_context(job_id=_safe_job_id())
     logger.info("task_start", task_name="publish_due_drafts")
+
     async def _run() -> None:
         settings = Settings()
         engine = create_engine_from_settings(settings)
@@ -201,7 +208,8 @@ def publish_due_drafts_task() -> None:
                 redis_client = aioredis.from_url(settings.redis_url)
                 quota_service = QuotaService(redis_client, settings=settings)
                 rate_limiter = RedisRateLimiter(redis_client, settings=settings)
-            except Exception:
+            except Exception as exc:
+                logger.warning("redis_quota_init_failed", error=str(exc))
                 quota_service = None
 
         async with session_factory() as session:
@@ -216,7 +224,7 @@ def publish_due_drafts_task() -> None:
             )
             schedule_repo = ScheduleRepository(session)
             schedules = await schedule_repo.list_enabled()
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             for schedule in schedules:
                 await service.publish_due(schedule.project_id, now=now)
         await engine.dispose()

@@ -48,7 +48,7 @@ async def test_create_and_get_project_settings(session: AsyncSession) -> None:
     user = await user_repo.create_user(tg_id=11111)
     project = await project_repo.create_project(owner_user_id=user.id, title="Project", tz="UTC")
 
-    created = await settings_repo.create_settings(
+    await settings_repo.create_settings(
         project_id=project.id,
         language="en",
         niche="tech",

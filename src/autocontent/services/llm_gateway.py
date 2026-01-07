@@ -28,7 +28,11 @@ class LLMGateway:
         raise ValueError(f"Unsupported llm_provider: {self.settings.llm_provider}")
 
     async def generate(
-        self, prompt: str, max_tokens: int | None = None, max_post_len: int | None = None, seed: int | None = None
+        self,
+        prompt: str,
+        max_tokens: int | None = None,
+        max_post_len: int | None = None,
+        seed: int | None = None,
     ) -> LLMResponse:
         resolved_max_tokens = max_tokens or self.settings.llm_max_tokens
         if max_post_len is not None:

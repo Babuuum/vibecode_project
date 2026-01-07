@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -36,7 +36,7 @@ async def test_usage_increment_repository(session) -> None:
 
     user = await user_repo.create_user(tg_id=800)
     project = await project_repo.create_project(owner_user_id=user.id, title="P", tz="UTC")
-    day = datetime.now(timezone.utc).date()
+    day = datetime.now(UTC).date()
 
     await usage_repo.increment(project.id, day, drafts_generated=1, llm_calls=2, tokens_est=10)
     await usage_repo.increment(project.id, day, posts_published=1, tokens_est=5)
@@ -61,8 +61,12 @@ async def test_usage_updated_on_generate_and_publish(session) -> None:
 
     user = await user_repo.create_user(tg_id=801)
     project = await project_repo.create_project(owner_user_id=user.id, title="P", tz="UTC")
-    await settings_repo.create_settings(project_id=project.id, language="en", niche="tech", tone="formal")
-    await channel_repo.create_or_update(project_id=project.id, channel_id="@channel", channel_username="@channel")
+    await settings_repo.create_settings(
+        project_id=project.id, language="en", niche="tech", tone="formal"
+    )
+    await channel_repo.create_or_update(
+        project_id=project.id, channel_id="@channel", channel_username="@channel"
+    )
     await channel_repo.update_status(project.id, status="connected")
 
     source = await source_repo.create_source(project_id=project.id, url="http://example.com/feed")
@@ -81,7 +85,7 @@ async def test_usage_updated_on_generate_and_publish(session) -> None:
     service = DraftService(session, llm_client=llm, settings=Settings(llm_mode="normal"))
     draft = await service.generate_draft(item.id)
 
-    day = datetime.now(timezone.utc).date()
+    day = datetime.now(UTC).date()
     usage = await usage_repo.get_by_project_day(project.id, day)
     assert usage is not None
     assert usage.drafts_generated == 1

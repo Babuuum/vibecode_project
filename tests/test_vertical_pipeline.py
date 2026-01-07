@@ -5,7 +5,6 @@ from autocontent.repos import ProjectRepository, SourceRepository, UserRepositor
 from autocontent.services.rss_fetcher import fetch_and_save_source
 from autocontent.shared.lock import InMemoryLockStore
 
-
 RSS_SAMPLE = """<?xml version="1.0" encoding="UTF-8" ?>
 <rss version="2.0">
 <channel>
@@ -46,6 +45,7 @@ RSS_SAMPLE_2 = """<?xml version="1.0" encoding="UTF-8" ?>
 </channel>
 </rss>
 """
+
 
 class FakeRSSClient:
     def __init__(self, payload: str) -> None:

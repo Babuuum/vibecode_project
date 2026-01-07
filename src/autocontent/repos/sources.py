@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,7 +53,7 @@ class SourceRepository:
             return None
         source.status = status
         source.last_error = last_error
-        source.last_fetch_at = datetime.now(timezone.utc)
+        source.last_fetch_at = datetime.now(UTC)
         if consecutive_failures is not None:
             source.consecutive_failures = consecutive_failures
         await self._session.commit()

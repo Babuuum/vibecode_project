@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import update
@@ -48,13 +48,13 @@ async def test_antirepeat_window_check(session) -> None:
         status="new",
     )
 
-    old_time = datetime.now(timezone.utc) - timedelta(days=10)
+    old_time = datetime.now(UTC) - timedelta(days=10)
     await session.execute(
         update(PostDraft).where(PostDraft.id == draft.id).values(created_at=old_time)
     )
     await session.commit()
 
-    since = datetime.now(timezone.utc) - timedelta(days=7)
+    since = datetime.now(UTC) - timedelta(days=7)
     assert await draft_repo.has_recent_hash(draft.draft_hash, since) is False
 
 
@@ -70,7 +70,9 @@ async def test_antirepeat_blocks_duplicate_draft(session) -> None:
 
     user = await user_repo.create_user(tg_id=901)
     project = await project_repo.create_project(owner_user_id=user.id, title="P2", tz="UTC")
-    await settings_repo.create_settings(project_id=project.id, language="en", niche="tech", tone="formal")
+    await settings_repo.create_settings(
+        project_id=project.id, language="en", niche="tech", tone="formal"
+    )
     source = await source_repo.create_source(project_id=project.id, url="http://example.com/feed2")
     item1 = await item_repo.create_item(
         source_id=source.id,

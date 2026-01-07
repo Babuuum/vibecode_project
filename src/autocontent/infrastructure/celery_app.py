@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import structlog
 from celery import Celery
 
 from autocontent.config import Settings
@@ -31,12 +32,13 @@ celery_app.conf.update(
         "publish-due-drafts": {
             "task": "publish_due_drafts",
             "schedule": 120,
-        }
+        },
     },
 )
 
 # Register tasks
 try:
     from autocontent.worker import tasks as _worker_tasks  # noqa: F401
-except Exception:
-    pass
+except Exception as exc:
+    logger = structlog.get_logger(__name__)
+    logger.warning("celery_task_import_failed", error=str(exc))

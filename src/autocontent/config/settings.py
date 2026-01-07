@@ -1,17 +1,32 @@
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _resolve_env_file() -> str | None:
+    env_file = os.getenv("ENV_FILE")
+    if env_file:
+        return env_file
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return None
+    candidate = Path(".env")
+    return str(candidate) if candidate.is_file() else None
 
 
 class Settings(BaseSettings):
     """Application-wide settings with sensible defaults."""
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="allow")
+    model_config = SettingsConfigDict(
+        env_file=_resolve_env_file(), env_file_encoding="utf-8", extra="allow"
+    )
 
     app_name: str = "AutoContent TG"
     environment: str = "development"
-    api_host: str = "0.0.0.0"
+    api_host: str = "0.0.0.0"  # noqa: S104
     api_port: int = 8000
     reload: bool = False
     log_level: str = "info"
@@ -59,6 +74,10 @@ class Settings(BaseSettings):
     url_text_max_chars: int = 8000
     source_text_max_chars: int = 8000
 
+    def __init__(self, **values) -> None:
+        super().__init__(**values)
+        set_settings(self)
+
     @property
     def llm_max_tokens(self) -> int:
         return 128 if self.llm_mode == "economy" else 512
@@ -70,3 +89,18 @@ class Settings(BaseSettings):
     @property
     def resolved_celery_result_backend(self) -> str:
         return self.celery_result_backend or self.redis_url
+
+
+_CURRENT_SETTINGS: Settings | None = None
+
+
+def get_settings() -> Settings:
+    global _CURRENT_SETTINGS
+    if _CURRENT_SETTINGS is None:
+        _CURRENT_SETTINGS = Settings()
+    return _CURRENT_SETTINGS
+
+
+def set_settings(settings: Settings) -> None:
+    global _CURRENT_SETTINGS
+    _CURRENT_SETTINGS = settings

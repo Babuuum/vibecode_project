@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -50,7 +50,9 @@ async def test_safe_mode_blocks_autopost(session) -> None:
         safe_mode=True,
         autopost_enabled=False,
     )
-    await channel_repo.create_or_update(project_id=project.id, channel_id="@ch", channel_username="@ch")
+    await channel_repo.create_or_update(
+        project_id=project.id, channel_id="@ch", channel_username="@ch"
+    )
     await channel_repo.update_status(project_id=project.id, status="connected", last_error=None)
     source = await source_repo.create_source(project_id=project.id, url="http://example.com/feed")
     item = await item_repo.create_item(
@@ -82,7 +84,7 @@ async def test_safe_mode_blocks_autopost(session) -> None:
 
     client = FakeTelegramClient()
     service = PublicationService(session, telegram_client=client)
-    now = datetime(2025, 1, 1, 10, 2, tzinfo=timezone.utc)
+    now = datetime(2025, 1, 1, 10, 2, tzinfo=UTC)
     log = await service.publish_due(project.id, now=now)
 
     assert log is None

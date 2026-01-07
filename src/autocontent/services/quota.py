@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
 try:
@@ -45,7 +45,7 @@ class QuotaService:
         self._settings = settings or Settings()
 
     def _ttl_to_end_of_day(self) -> int:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         return int((tomorrow - now).total_seconds())
 

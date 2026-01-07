@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from httpx import AsyncClient
@@ -32,7 +32,7 @@ async def _build_app() -> tuple:
     settings = Settings(
         postgres_dsn="sqlite+aiosqlite:///file::memory:?cache=shared&uri=true",
         admin_api_key="secret",
-        bot_token="test",
+        bot_token="test",  # noqa: S106
     )
     app = create_app(settings)
     async with app.state.engine.begin() as conn:
@@ -69,13 +69,15 @@ async def test_admin_list_drafts_by_status() -> None:
 
         user = await user_repo.create_user(tg_id=200)
         project = await project_repo.create_project(owner_user_id=user.id, title="P2", tz="UTC")
-        source = await source_repo.create_source(project_id=project.id, url="http://example.com/feed")
+        source = await source_repo.create_source(
+            project_id=project.id, url="http://example.com/feed"
+        )
         item = await item_repo.create_item(
             source_id=source.id,
             external_id="1",
             link="http://example.com/1",
             title="Title",
-            published_at=datetime.now(timezone.utc),
+            published_at=datetime.now(UTC),
             raw_text="Body",
             content_hash=compute_content_hash("http://example.com/1", "Title", "Body"),
         )
@@ -84,7 +86,9 @@ async def test_admin_list_drafts_by_status() -> None:
             source_item_id=item.id,
             template_id=None,
             text="ready",
-            draft_hash=draft_repo.compute_draft_hash(project.id, item.id, None, item.raw_text or ""),
+            draft_hash=draft_repo.compute_draft_hash(
+                project.id, item.id, None, item.raw_text or ""
+            ),
             status="ready",
         )
         await draft_repo.create_draft(
@@ -92,7 +96,9 @@ async def test_admin_list_drafts_by_status() -> None:
             source_item_id=item.id,
             template_id=None,
             text="new",
-            draft_hash=draft_repo.compute_draft_hash(project.id, item.id, "t2", item.raw_text or ""),
+            draft_hash=draft_repo.compute_draft_hash(
+                project.id, item.id, "t2", item.raw_text or ""
+            ),
             status="new",
         )
 
@@ -128,12 +134,16 @@ async def test_admin_publish_draft() -> None:
 
         user = await user_repo.create_user(tg_id=300)
         project = await project_repo.create_project(owner_user_id=user.id, title="P3", tz="UTC")
-        await settings_repo.create_settings(project_id=project.id, language="en", niche="tech", tone="formal")
+        await settings_repo.create_settings(
+            project_id=project.id, language="en", niche="tech", tone="formal"
+        )
         await channel_repo.create_or_update(
             project_id=project.id, channel_id="@channel", channel_username="@channel"
         )
         await channel_repo.update_status(project.id, status="connected")
-        source = await source_repo.create_source(project_id=project.id, url="http://example.com/feed")
+        source = await source_repo.create_source(
+            project_id=project.id, url="http://example.com/feed"
+        )
         item = await item_repo.create_item(
             source_id=source.id,
             external_id="1",
@@ -148,7 +158,9 @@ async def test_admin_publish_draft() -> None:
             source_item_id=item.id,
             template_id=None,
             text="Draft body",
-            draft_hash=draft_repo.compute_draft_hash(project.id, item.id, None, item.raw_text or ""),
+            draft_hash=draft_repo.compute_draft_hash(
+                project.id, item.id, None, item.raw_text or ""
+            ),
             status="ready",
         )
 

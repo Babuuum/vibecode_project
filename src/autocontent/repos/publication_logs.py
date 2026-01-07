@@ -28,6 +28,20 @@ class PublicationLogRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_by_project_and_scheduled(
+        self, project_id: int, scheduled_at: datetime
+    ) -> PublicationLog | None:
+        stmt = (
+            select(PublicationLog)
+            .join(PostDraft, PostDraft.id == PublicationLog.draft_id)
+            .where(
+                PostDraft.project_id == project_id,
+                PublicationLog.scheduled_at == scheduled_at,
+            )
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def count_by_project_scheduled_between(
         self, project_id: int, start_at: datetime, end_at: datetime
     ) -> int:

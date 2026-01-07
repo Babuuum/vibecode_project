@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,7 +50,7 @@ class ChannelBindingRepository:
             return None
 
         binding.status = status
-        binding.last_check_at = datetime.now(timezone.utc)
+        binding.last_check_at = datetime.now(UTC)
         binding.last_error = last_error
         await self._session.commit()
         await self._session.refresh(binding)

@@ -31,7 +31,7 @@ class InMemoryCooldownStore:
 
 
 class RedisCooldownStore:
-    def __init__(self, redis_client: "Redis") -> None:
+    def __init__(self, redis_client: Redis) -> None:
         self._redis = redis_client
 
     async def acquire(self, key: str, ttl: int) -> bool:

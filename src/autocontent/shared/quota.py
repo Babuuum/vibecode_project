@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
 try:
@@ -23,12 +23,11 @@ class QuotaLimits:
 
 
 class QuotaStore(Protocol):
-    async def increment(self, key: str, ttl: int) -> int:
-        ...
+    async def increment(self, key: str, ttl: int) -> int: ...
 
 
 def _ttl_until_day_end(now: datetime | None = None) -> int:
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     end = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     return max(1, int((end - now).total_seconds()))
 
@@ -48,7 +47,7 @@ class InMemoryQuotaStore:
 
 
 class RedisQuotaStore:
-    def __init__(self, redis_client: "Redis") -> None:
+    def __init__(self, redis_client: Redis) -> None:
         self._redis = redis_client
 
     async def increment(self, key: str, ttl: int) -> int:

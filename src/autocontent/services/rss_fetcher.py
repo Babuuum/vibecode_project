@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Iterable
+from collections.abc import Iterable
+from datetime import UTC, datetime
 
 import feedparser
 import httpx
+import structlog
 from bs4 import BeautifulSoup
 from sqlalchemy.ext.asyncio import AsyncSession
-import structlog
 
-from autocontent.domain import Source
 from autocontent.config import Settings
+from autocontent.config.settings import get_settings
+from autocontent.domain import Source
 from autocontent.integrations.rss_client import HttpRSSClient, RSSClient
 from autocontent.integrations.task_queue import TaskQueue
 from autocontent.integrations.url_client import HttpURLClient, URLClient
@@ -23,7 +24,7 @@ def _parse_datetime(entry: dict) -> datetime | None:
     published = entry.get("published_parsed") or entry.get("updated_parsed")
     if not published:
         return None
-    return datetime(*published[:6], tzinfo=timezone.utc)
+    return datetime(*published[:6], tzinfo=UTC)
 
 
 def _extract_entries(feed) -> Iterable[dict]:
@@ -38,10 +39,12 @@ async def fetch_and_save_source(
     lock_store: LockStore | None = None,
     max_items_per_run: int | None = None,
     url_client: URLClient | None = None,
+    settings: Settings | None = None,
 ) -> tuple[Source | None, int]:
     logger = structlog.get_logger(__name__)
     rss_client = rss_client or HttpRSSClient()
     url_client = url_client or HttpURLClient()
+    settings = settings or get_settings()
 
     source_repo = SourceRepository(session)
     source_item_repo = SourceItemRepository(session)
@@ -55,7 +58,6 @@ async def fetch_and_save_source(
         saved = 0
         created_items: list[int] = []
         if source.type == "url":
-            settings = Settings()
             html = await url_client.fetch(source.url, settings.url_fetch_timeout_sec)
             if len(html) > settings.url_max_chars:
                 html = html[: settings.url_max_chars]
@@ -106,7 +108,6 @@ async def fetch_and_save_source(
         )
         if created_items and task_queue:
             lock = lock_store or InMemoryLockStore()
-            settings = Settings()
             ttl = settings.generate_lock_ttl
             if await lock.acquire(f"generate:{source.project_id}", ttl):
                 limit = max_items_per_run or settings.max_generate_per_fetch
@@ -120,15 +121,15 @@ async def fetch_and_save_source(
         )
         return source, saved
     except httpx.TimeoutException:
-        await _handle_fetch_error(source, source_repo, "timeout")
+        await _handle_fetch_error(source, source_repo, "timeout", settings)
         return source, 0
     except httpx.HTTPStatusError as exc:
-        await _handle_fetch_error(source, source_repo, f"HTTP {exc.response.status_code}")
+        await _handle_fetch_error(source, source_repo, f"HTTP {exc.response.status_code}", settings)
         return source, 0
     except Exception as exc:  # noqa: BLE001
         new_failures = (source.consecutive_failures or 0) + 1
         status = "error"
-        if new_failures >= Settings().source_fail_threshold:
+        if new_failures >= settings.source_fail_threshold:
             status = "broken"
         await source_repo.update_status(
             source_id,
@@ -139,10 +140,12 @@ async def fetch_and_save_source(
         return source, 0
 
 
-async def _handle_fetch_error(source: Source, repo: SourceRepository, message: str) -> None:
+async def _handle_fetch_error(
+    source: Source, repo: SourceRepository, message: str, settings: Settings
+) -> None:
     new_failures = (source.consecutive_failures or 0) + 1
     status = "error"
-    if new_failures >= Settings().source_fail_threshold:
+    if new_failures >= settings.source_fail_threshold:
         status = "broken"
     await repo.update_status(
         source.id,

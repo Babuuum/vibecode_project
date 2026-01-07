@@ -8,8 +8,8 @@ from autocontent.domain import Source
 from autocontent.integrations.rss_client import HttpRSSClient, RSSClient
 from autocontent.integrations.task_queue import TaskQueue
 from autocontent.repos import SourceItemRepository, SourceRepository
-from autocontent.services.rss_fetcher import fetch_and_save_source
 from autocontent.services.quota import QuotaExceededError
+from autocontent.services.rss_fetcher import fetch_and_save_source
 from autocontent.shared.lock import LockStore
 
 
@@ -43,9 +43,6 @@ class SourceService:
         except IntegrityError as exc:
             await self._session.rollback()
             raise DuplicateSourceError("Source already exists for this project") from exc
-
-    async def list_sources(self, project_id: int):
-        return await self._repo.list_by_project(project_id)
 
     async def fetch_source(self, source_id: int) -> tuple[Source | None, int]:
         return await fetch_and_save_source(

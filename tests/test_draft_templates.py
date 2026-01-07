@@ -1,10 +1,16 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
 from autocontent.config import Settings
 from autocontent.integrations.llm_client import MockLLMClient
-from autocontent.repos import ProjectRepository, ProjectSettingsRepository, SourceItemRepository, SourceRepository, UserRepository
+from autocontent.repos import (
+    ProjectRepository,
+    ProjectSettingsRepository,
+    SourceItemRepository,
+    SourceRepository,
+    UserRepository,
+)
 from autocontent.services.draft_service import DraftService
 
 
@@ -18,7 +24,9 @@ async def test_template_changes_output(session) -> None:
 
     user = await user_repo.create_user(tg_id=900)
     project_news = await project_repo.create_project(owner_user_id=user.id, title="News", tz="UTC")
-    project_digest = await project_repo.create_project(owner_user_id=user.id, title="Digest", tz="UTC")
+    project_digest = await project_repo.create_project(
+        owner_user_id=user.id, title="Digest", tz="UTC"
+    )
     await settings_repo.create_settings(
         project_id=project_news.id,
         language="en",
@@ -36,8 +44,12 @@ async def test_template_changes_output(session) -> None:
         max_post_len=400,
     )
 
-    source_news = await source_repo.create_source(project_id=project_news.id, url="http://example.com/news")
-    source_digest = await source_repo.create_source(project_id=project_digest.id, url="http://example.com/digest")
+    source_news = await source_repo.create_source(
+        project_id=project_news.id, url="http://example.com/news"
+    )
+    source_digest = await source_repo.create_source(
+        project_id=project_digest.id, url="http://example.com/digest"
+    )
 
     raw_text = "Same content for both templates"
     item_news = await item_repo.create_item(
@@ -45,7 +57,7 @@ async def test_template_changes_output(session) -> None:
         external_id="n1",
         link="http://example.com/n1",
         title="Title",
-        published_at=datetime.now(timezone.utc),
+        published_at=datetime.now(UTC),
         raw_text=raw_text,
         content_hash="hash-news",
     )
@@ -54,7 +66,7 @@ async def test_template_changes_output(session) -> None:
         external_id="d1",
         link="http://example.com/d1",
         title="Title",
-        published_at=datetime.now(timezone.utc),
+        published_at=datetime.now(UTC),
         raw_text=raw_text,
         content_hash="hash-digest",
     )

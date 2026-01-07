@@ -1,5 +1,6 @@
+from datetime import UTC, datetime
+
 import pytest
-from datetime import datetime, timezone
 
 from autocontent.config import Settings
 from autocontent.integrations.llm_client import MockLLMClient
@@ -15,13 +16,12 @@ from autocontent.repos import (
     UserRepository,
 )
 from autocontent.services.draft_service import DraftService
-from autocontent.services.publication_service import PublicationService, PublicationError
+from autocontent.services.publication_service import PublicationService
 from autocontent.services.quota import QuotaExceededError, QuotaService
 from autocontent.services.rss_fetcher import fetch_and_save_source
 from autocontent.services.source_service import SourceService
 from autocontent.shared.idempotency import InMemoryIdempotencyStore
 from autocontent.shared.text import compute_content_hash
-
 
 RSS_SAMPLE = """<?xml version="1.0" encoding="UTF-8" ?>
 <rss version="2.0">
@@ -93,7 +93,9 @@ async def test_e2e_happy_path(session) -> None:
 
     user = await user_repo.create_user(tg_id=100)
     project = await project_repo.create_project(owner_user_id=user.id, title="P", tz="UTC")
-    await channel_repo.create_or_update(project_id=project.id, channel_id="@ch", channel_username="@ch")
+    await channel_repo.create_or_update(
+        project_id=project.id, channel_id="@ch", channel_username="@ch"
+    )
     await channel_repo.update_status(project_id=project.id, status="connected", last_error=None)
 
     source_service = SourceService(session, settings=settings)
@@ -106,7 +108,9 @@ async def test_e2e_happy_path(session) -> None:
     items = await item_repo.get_latest_new_for_project(project.id)
     assert items is not None
 
-    draft_service = DraftService(session, llm_client=MockLLMClient(default_max_tokens=50), settings=settings)
+    draft_service = DraftService(
+        session, llm_client=MockLLMClient(default_max_tokens=50), settings=settings
+    )
     draft = await draft_service.generate_draft(items.id)
     assert "http://example.com/1" in draft.text
 
@@ -136,7 +140,9 @@ async def test_e2e_pipeline_with_approval(session) -> None:
 
     user = await user_repo.create_user(tg_id=110)
     project = await project_repo.create_project(owner_user_id=user.id, title="P-approve", tz="UTC")
-    await channel_repo.create_or_update(project_id=project.id, channel_id="@ch", channel_username="@ch")
+    await channel_repo.create_or_update(
+        project_id=project.id, channel_id="@ch", channel_username="@ch"
+    )
     await channel_repo.update_status(project_id=project.id, status="connected", last_error=None)
 
     source_service = SourceService(session, settings=settings)
@@ -149,7 +155,9 @@ async def test_e2e_pipeline_with_approval(session) -> None:
     item = await item_repo.get_latest_new_for_project(project.id)
     assert item is not None
 
-    draft_service = DraftService(session, llm_client=MockLLMClient(default_max_tokens=50), settings=settings)
+    draft_service = DraftService(
+        session, llm_client=MockLLMClient(default_max_tokens=50), settings=settings
+    )
     draft = await draft_service.generate_draft(item.id)
     await draft_service.set_status(draft.id, "needs_approval")
     await draft_service.set_status(draft.id, "ready")
@@ -186,13 +194,18 @@ async def test_e2e_quota_block(session) -> None:
         external_id="e1",
         link="http://example.com/1",
         title="t",
-        published_at=datetime.now(timezone.utc),
+        published_at=datetime.now(UTC),
         raw_text="raw",
         content_hash=compute_content_hash("http://example.com/1", "t", "raw"),
     )
     assert item is not None
 
-    draft_service = DraftService(session, llm_client=MockLLMClient(default_max_tokens=20), settings=settings, quota_service=quota)
+    draft_service = DraftService(
+        session,
+        llm_client=MockLLMClient(default_max_tokens=20),
+        settings=settings,
+        quota_service=quota,
+    )
     await draft_service.generate_draft(item.id)
     with pytest.raises(QuotaExceededError):
         await draft_service.generate_draft(item.id)
@@ -233,7 +246,6 @@ async def test_e2e_broken_source_after_failures(session) -> None:
 
 @pytest.mark.asyncio
 async def test_e2e_publish_due_and_safe_mode(session) -> None:
-    settings = Settings()
     user_repo = UserRepository(session)
     project_repo = ProjectRepository(session)
     settings_repo = ProjectSettingsRepository(session)
@@ -253,7 +265,9 @@ async def test_e2e_publish_due_and_safe_mode(session) -> None:
         safe_mode=False,
         autopost_enabled=False,
     )
-    await channel_repo.create_or_update(project_id=project.id, channel_id="@ch", channel_username="@ch")
+    await channel_repo.create_or_update(
+        project_id=project.id, channel_id="@ch", channel_username="@ch"
+    )
     await channel_repo.update_status(project_id=project.id, status="connected", last_error=None)
     source = await source_repo.create_source(project_id=project.id, url="http://example.com/feed")
     item = await item_repo.create_item(
@@ -266,7 +280,7 @@ async def test_e2e_publish_due_and_safe_mode(session) -> None:
         content_hash=compute_content_hash("http://example.com/1", "Title", "Body"),
     )
     assert item is not None
-    draft = await draft_repo.create_draft(
+    await draft_repo.create_draft(
         project_id=project.id,
         source_item_id=item.id,
         template_id=None,
@@ -284,7 +298,7 @@ async def test_e2e_publish_due_and_safe_mode(session) -> None:
 
     client = MockTelegramClient()
     service = PublicationService(session, telegram_client=client)
-    now = datetime(2025, 1, 1, 10, 2, tzinfo=timezone.utc)
+    now = datetime(2025, 1, 1, 10, 2, tzinfo=UTC)
     log = await service.publish_due(project.id, now=now)
 
     assert log is not None

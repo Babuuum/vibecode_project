@@ -12,6 +12,7 @@ class TaskQueue(ABC):
     def enqueue_publish_draft(self, draft_id: int) -> None:
         raise NotImplementedError
 
+
 class CeleryTaskQueue(TaskQueue):
     def enqueue_generate_draft(self, source_item_id: int) -> None:
         from autocontent.worker.tasks import generate_draft_task

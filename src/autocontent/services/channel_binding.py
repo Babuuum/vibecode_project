@@ -5,8 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from autocontent.integrations.telegram_client import (
     ChannelForbiddenError,
     ChannelNotFoundError,
-    TelegramClientError,
     TelegramClient,
+    TelegramClientError,
 )
 from autocontent.repos import ChannelBindingRepository
 
@@ -20,7 +20,9 @@ class ChannelBindingService:
         self._repo = ChannelBindingRepository(session)
         self._telegram_client = telegram_client
 
-    async def save_binding(self, project_id: int, channel_id: str, channel_username: str | None) -> None:
+    async def save_binding(
+        self, project_id: int, channel_id: str, channel_username: str | None
+    ) -> None:
         await self._repo.create_or_update(
             project_id=project_id, channel_id=channel_id, channel_username=channel_username
         )

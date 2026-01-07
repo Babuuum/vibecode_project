@@ -10,8 +10,7 @@ except Exception:  # pragma: no cover
 
 
 class IdempotencyStore(Protocol):
-    async def acquire(self, key: str, ttl: int) -> bool:
-        ...
+    async def acquire(self, key: str, ttl: int) -> bool: ...
 
 
 class InMemoryIdempotencyStore:
@@ -28,7 +27,7 @@ class InMemoryIdempotencyStore:
 
 
 class RedisIdempotencyStore:
-    def __init__(self, redis_client: "Redis") -> None:
+    def __init__(self, redis_client: Redis) -> None:
         self._redis = redis_client
 
     async def acquire(self, key: str, ttl: int) -> bool:

@@ -1,8 +1,8 @@
 import pytest
 
+from autocontent.config import Settings
 from autocontent.repos import ProjectRepository, SourceRepository, UserRepository
 from autocontent.services.rss_fetcher import fetch_and_save_source
-from autocontent.config import Settings
 
 
 class FailingRSSClient:

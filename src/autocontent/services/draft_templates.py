@@ -30,7 +30,9 @@ TEMPLATE_PRESETS: dict[str, TemplatePreset] = {
     "fact": TemplatePreset(
         template_id="fact",
         title="Fact of the day",
-        instructions="Start with 'Fact of the day:' then give one fact and a short context sentence.",
+        instructions=(
+            "Start with 'Fact of the day:' then give one fact and " "a short context sentence."
+        ),
     ),
     "question": TemplatePreset(
         template_id="question",

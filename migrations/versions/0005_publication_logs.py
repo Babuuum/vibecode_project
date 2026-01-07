@@ -1,15 +1,15 @@
 """Add publication logs."""
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "0005_publication_logs"
-down_revision: Union[str, None] = "0004_post_drafts"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0004_post_drafts"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -23,7 +23,9 @@ def upgrade() -> None:
         sa.Column("status", sa.String(length=32), nullable=False, server_default="new"),
         sa.Column("error_code", sa.String(length=64), nullable=True),
         sa.Column("error_text", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
         sa.UniqueConstraint("draft_id", name="uq_publication_draft"),
     )
 

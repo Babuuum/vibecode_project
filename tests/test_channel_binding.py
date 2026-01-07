@@ -1,7 +1,10 @@
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any
 
 import pytest
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
+from aiogram.fsm.storage.memory import MemoryStorage
 
 from autocontent.bot.router import channel_check_handler
 from autocontent.integrations.telegram_client import (
@@ -10,9 +13,6 @@ from autocontent.integrations.telegram_client import (
     TelegramClient,
 )
 from autocontent.repos import ChannelBindingRepository, ProjectRepository, UserRepository
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.storage.base import StorageKey
-from aiogram.fsm.storage.memory import MemoryStorage
 
 
 @dataclass
@@ -24,7 +24,7 @@ class FakeFromUser:
 class FakeMessage:
     text: str
     from_user: FakeFromUser
-    answers: List[str]
+    answers: list[str]
 
     async def answer(self, text: str, **kwargs: Any) -> None:
         self.answers.append(text)
@@ -53,7 +53,9 @@ async def test_channel_check_success(session) -> None:
 
     user = await user_repo.create_user(tg_id=7)
     project = await project_repo.create_project(owner_user_id=user.id, title="Proj", tz="UTC")
-    await channel_repo.create_or_update(project_id=project.id, channel_id="@test", channel_username="@test")
+    await channel_repo.create_or_update(
+        project_id=project.id, channel_id="@test", channel_username="@test"
+    )
 
     storage = MemoryStorage()
     key = StorageKey(bot_id=0, user_id=user.id, chat_id=user.id)
@@ -63,7 +65,9 @@ async def test_channel_check_success(session) -> None:
     message = FakeMessage(text="Проверить", from_user=FakeFromUser(id=user.tg_id), answers=[])
     client = FakeTelegramClient(behavior="ok")
 
-    await channel_check_handler(message=message, state=state, session=session, telegram_client=client)
+    await channel_check_handler(
+        message=message, state=state, session=session, telegram_client=client
+    )
     assert any("Канал подключен" in ans for ans in message.answers)
     binding_after = await channel_repo.get_by_project_id(project.id)
     assert binding_after is not None
@@ -79,7 +83,9 @@ async def test_channel_check_forbidden(session) -> None:
 
     user = await user_repo.create_user(tg_id=8)
     project = await project_repo.create_project(owner_user_id=user.id, title="Proj", tz="UTC")
-    await channel_repo.create_or_update(project_id=project.id, channel_id="@test2", channel_username="@test2")
+    await channel_repo.create_or_update(
+        project_id=project.id, channel_id="@test2", channel_username="@test2"
+    )
 
     storage = MemoryStorage()
     key = StorageKey(bot_id=0, user_id=user.id, chat_id=user.id)
@@ -89,7 +95,9 @@ async def test_channel_check_forbidden(session) -> None:
     message = FakeMessage(text="Проверить", from_user=FakeFromUser(id=user.tg_id), answers=[])
     client = FakeTelegramClient(behavior="forbidden")
 
-    await channel_check_handler(message=message, state=state, session=session, telegram_client=client)
+    await channel_check_handler(
+        message=message, state=state, session=session, telegram_client=client
+    )
     assert any("не может писать" in ans for ans in message.answers)
     binding_after = await channel_repo.get_by_project_id(project.id)
     assert binding_after is not None
@@ -105,7 +113,9 @@ async def test_channel_check_not_found(session) -> None:
 
     user = await user_repo.create_user(tg_id=9)
     project = await project_repo.create_project(owner_user_id=user.id, title="Proj", tz="UTC")
-    await channel_repo.create_or_update(project_id=project.id, channel_id="@test3", channel_username="@test3")
+    await channel_repo.create_or_update(
+        project_id=project.id, channel_id="@test3", channel_username="@test3"
+    )
 
     storage = MemoryStorage()
     key = StorageKey(bot_id=0, user_id=user.id, chat_id=user.id)
@@ -115,7 +125,9 @@ async def test_channel_check_not_found(session) -> None:
     message = FakeMessage(text="Проверить", from_user=FakeFromUser(id=user.tg_id), answers=[])
     client = FakeTelegramClient(behavior="not_found")
 
-    await channel_check_handler(message=message, state=state, session=session, telegram_client=client)
+    await channel_check_handler(
+        message=message, state=state, session=session, telegram_client=client
+    )
     assert any("не найден" in ans for ans in message.answers)
     binding_after = await channel_repo.get_by_project_id(project.id)
     assert binding_after is not None

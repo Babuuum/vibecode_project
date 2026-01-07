@@ -1,11 +1,10 @@
-import asyncio
 from dataclasses import dataclass, field
-from typing import Any, List
+from typing import Any
 
 import pytest
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.storage.base import StorageKey
+from aiogram.fsm.storage.memory import MemoryStorage
 
 from autocontent.bot.router import (
     OnboardingStates,
@@ -27,7 +26,7 @@ class FakeFromUser:
 class FakeMessage:
     text: str
     from_user: FakeFromUser
-    answers: List[str] = field(default_factory=list)
+    answers: list[str] = field(default_factory=list)
 
     async def answer(self, text: str, **kwargs: Any) -> None:
         self.answers.append(text)

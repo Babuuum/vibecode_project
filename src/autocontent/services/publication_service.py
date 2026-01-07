@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import date, datetime, time, timedelta, timezone
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from autocontent.config import Settings
+from autocontent.domain import PublicationLog
 from autocontent.integrations.telegram_client import (
     ChannelForbiddenError,
     ChannelNotFoundError,
@@ -26,7 +27,7 @@ from autocontent.repos import (
     UsageCounterRepository,
 )
 from autocontent.services.quota import NoopQuotaService, QuotaBackend, QuotaExceededError
-from autocontent.services.rate_limit import NoopRateLimiter, RateLimitExceededError, RateLimiter
+from autocontent.services.rate_limit import NoopRateLimiter, RateLimiter, RateLimitExceededError
 from autocontent.shared.idempotency import IdempotencyStore, InMemoryIdempotencyStore
 
 
@@ -76,10 +77,6 @@ class PublicationService:
         if not draft:
             raise PublicationError("Draft not found")
 
-        channel = await self._channels.get_by_project_id(draft.project_id)
-        if not channel or channel.status != "connected":
-            raise PublicationError("Channel not connected")
-
         logger.info(
             "draft_publish_start",
             project_id=draft.project_id,
@@ -87,6 +84,7 @@ class PublicationService:
         )
         try:
             await self._quota.ensure_can_publish(draft.project_id)
+            await self._quota.ensure_can_generate(draft.project_id)
         except QuotaExceededError as exc:
             await self._drafts.update_status(draft.id, "failed")
             await self._logs.create_log(
@@ -108,6 +106,10 @@ class PublicationService:
             )
             raise
 
+        channel = await self._channels.get_by_project_id(draft.project_id)
+        if not channel or channel.status != "connected":
+            raise PublicationError("Channel not connected")
+
         attempt = 0
         last_exc: Exception | None = None
         while attempt <= max_retries:
@@ -119,7 +121,7 @@ class PublicationService:
                     draft_id=draft.id,
                     status="published",
                     tg_message_id=message_id,
-                    published_at=datetime.now(timezone.utc),
+                    published_at=datetime.now(UTC),
                 )
                 await self._usage.increment(
                     project_id=draft.project_id,
@@ -139,7 +141,7 @@ class PublicationService:
                 if attempt > max_retries:
                     break
                 await self._sleep(exc.retry_after)
-            except (TransientTelegramError,) as exc:
+            except TransientTelegramError as exc:
                 last_exc = exc
                 attempt += 1
                 if attempt > max_retries:
@@ -181,22 +183,28 @@ class PublicationService:
 
         draft = await self._drafts.get_next_ready(project_id)
         if not draft:
+            scheduled_at_utc = scheduled_at.astimezone(UTC)
+            existing_log = await self._logs.get_by_project_and_scheduled(
+                project_id, scheduled_at_utc
+            )
+            if existing_log:
+                return existing_log
             return None
-
-        existing_log = await self._logs.get_by_draft_id(draft.id)
-        if existing_log:
-            return existing_log
 
         settings = await self._settings_repo.get_by_project_id(project_id)
         if settings and settings.safe_mode:
             await self._drafts.update_status(draft.id, "needs_approval")
             return None
 
-        scheduled_at_utc = scheduled_at.astimezone(timezone.utc)
+        scheduled_at_utc = scheduled_at.astimezone(UTC)
+        existing_log = await self._logs.get_by_project_and_scheduled(project_id, scheduled_at_utc)
+        if existing_log:
+            return existing_log
+
         day_start_local = datetime.combine(now_local.date(), time.min, tzinfo=tz)
         day_end_local = day_start_local + timedelta(days=1)
-        day_start_utc = day_start_local.astimezone(timezone.utc)
-        day_end_utc = day_end_local.astimezone(timezone.utc)
+        day_start_utc = day_start_local.astimezone(UTC)
+        day_end_utc = day_end_local.astimezone(UTC)
         published_today = await self._logs.count_by_project_scheduled_between(
             project_id, day_start_utc, day_end_utc
         )
@@ -213,7 +221,7 @@ class PublicationService:
             draft_id=draft.id,
             status="published",
             tg_message_id=message_id,
-            published_at=datetime.now(timezone.utc),
+            published_at=datetime.now(UTC),
             scheduled_at=scheduled_at_utc,
         )
         await self._usage.increment(
@@ -239,7 +247,7 @@ def _safe_timezone(tz_name: str) -> ZoneInfo:
 
 def _ensure_tz(value: datetime, tz: ZoneInfo) -> datetime:
     if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
+        value = value.replace(tzinfo=UTC)
     return value.astimezone(tz)
 
 
@@ -268,4 +276,4 @@ def _resolve_due_slot(now_local: datetime, slots_json: str) -> datetime | None:
 
 
 def _today_utc() -> date:
-    return datetime.now(timezone.utc).date()
+    return datetime.now(UTC).date()

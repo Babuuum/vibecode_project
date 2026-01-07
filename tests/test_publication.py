@@ -1,7 +1,8 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
+from autocontent.config import Settings
 from autocontent.integrations.telegram_client import TelegramClient
 from autocontent.repos import (
     ChannelBindingRepository,
@@ -13,9 +14,8 @@ from autocontent.repos import (
     UserRepository,
 )
 from autocontent.services.publication_service import PublicationService
+from autocontent.services.quota import QuotaExceededError, QuotaService
 from autocontent.shared.idempotency import InMemoryIdempotencyStore
-from autocontent.services.quota import QuotaService, QuotaExceededError
-from autocontent.config import Settings
 from autocontent.shared.text import compute_content_hash
 
 
@@ -54,7 +54,9 @@ async def test_publish_draft_idempotent(session) -> None:
 
     user = await user_repo.create_user(tg_id=99)
     project = await project_repo.create_project(owner_user_id=user.id, title="P", tz="UTC")
-    await channel_repo.create_or_update(project_id=project.id, channel_id="@channel", channel_username="@channel")
+    await channel_repo.create_or_update(
+        project_id=project.id, channel_id="@channel", channel_username="@channel"
+    )
     await channel_repo.update_status(project.id, status="connected")
 
     source = await source_repo.create_source(project_id=project.id, url="http://example.com/feed")
@@ -103,7 +105,9 @@ async def test_publish_draft_blocked_by_quota(session) -> None:
 
     user = await user_repo.create_user(tg_id=199)
     project = await project_repo.create_project(owner_user_id=user.id, title="PQ", tz="UTC")
-    await channel_repo.create_or_update(project_id=project.id, channel_id="@pq", channel_username="@pq")
+    await channel_repo.create_or_update(
+        project_id=project.id, channel_id="@pq", channel_username="@pq"
+    )
     await channel_repo.update_status(project_id=project.id, status="connected", last_error=None)
     source = await source_repo.create_source(project_id=project.id, url="http://example.com/pq")
     item = await item_repo.create_item(
@@ -170,7 +174,7 @@ async def test_publication_log_repository_idempotent(session) -> None:
         draft_id=draft.id,
         status="published",
         tg_message_id="m1",
-        published_at=datetime.now(timezone.utc),
+        published_at=datetime.now(UTC),
     )
     second = await log_repo.create_log(
         draft_id=draft.id,

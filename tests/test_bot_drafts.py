@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, List
+from typing import Any
 
 import pytest
 from aiogram.fsm.context import FSMContext
@@ -21,10 +21,11 @@ from autocontent.repos import (
     SourceRepository,
     UserRepository,
 )
+from autocontent.services.quota import NoopQuotaService
 from autocontent.shared.cooldown import InMemoryCooldownStore
 from autocontent.shared.idempotency import InMemoryIdempotencyStore
 from autocontent.shared.text import compute_content_hash
-from autocontent.services.quota import NoopQuotaService
+
 
 @dataclass
 class FakeFromUser:
@@ -35,7 +36,7 @@ class FakeFromUser:
 class FakeMessage:
     text: str
     from_user: FakeFromUser
-    answers: List[str] = field(default_factory=list)
+    answers: list[str] = field(default_factory=list)
     message_id: int = 1
 
     async def answer(self, text: str, **kwargs: Any) -> None:  # noqa: ARG002
@@ -46,7 +47,7 @@ class FakeMessage:
 class FakeCallback:
     data: str
     message: FakeMessage
-    answers: List[str] = field(default_factory=list)
+    answers: list[str] = field(default_factory=list)
 
     async def answer(self, text: str, **kwargs: Any) -> None:  # noqa: ARG002
         self.answers.append(text)
@@ -205,7 +206,9 @@ async def test_publish_callback_enqueue(session) -> None:
 
     user = await user_repo.create_user(tg_id=31)
     project = await project_repo.create_project(owner_user_id=user.id, title="P4", tz="UTC")
-    await channel_repo.create_or_update(project_id=project.id, channel_id="@ch", channel_username="@ch")
+    await channel_repo.create_or_update(
+        project_id=project.id, channel_id="@ch", channel_username="@ch"
+    )
     await channel_repo.update_status(project_id=project.id, status="connected", last_error=None)
     source = await source_repo.create_source(project_id=project.id, url="http://example.com")
     item = await item_repo.create_item(

@@ -3,8 +3,8 @@ from __future__ import annotations
 import uvicorn
 from fastapi import FastAPI
 
-from autocontent.api.routes import api_router
 from autocontent.api.middleware import RequestIdMiddleware
+from autocontent.api.routes import api_router
 from autocontent.config import Settings
 from autocontent.shared.db import create_engine_from_settings, create_session_factory
 from autocontent.shared.logging import configure_logging
