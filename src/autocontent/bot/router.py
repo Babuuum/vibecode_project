@@ -135,14 +135,11 @@ async def _handle_db_error(message: Message) -> None:
 
 def _format_onboarding_checklist() -> str:
     return (
-        "Чеклист онбординга:\n"
-        "1) /start — создать проект\n"
-        "2) «Добавить RSS» — добавить источники\n"
-        "3) «Подключить канал» — указать канал\n"
-        "4) «Проверить» — проверить доступ к каналу\n"
-        "5) «Fetch now» — подтянуть материалы\n"
-        "6) «Сгенерировать сейчас» — получить драфт\n"
-        "7) «Черновики» — открыть и опубликовать"
+        "Короткий чеклист:\n"
+        "1) Подключи канал\n"
+        "2) Добавь источник (RSS/URL)\n"
+        "3) Дождись черновика\n"
+        "4) Одобри пост или включи автопостинг"
     )
 
 
@@ -299,6 +296,9 @@ async def status_handler(message: Message, state: FSMContext, session: AsyncSess
     project_repo = ProjectRepository(session)
     source_repo = SourceRepository(session)
     channel_repo = ChannelBindingRepository(session)
+    settings_repo = ProjectSettingsRepository(session)
+    schedule_repo = ScheduleRepository(session)
+    usage_repo = UsageCounterRepository(session)
     drafts_service = DraftService(session)
 
     project = await project_repo.get_by_id(project_id)
@@ -309,6 +309,9 @@ async def status_handler(message: Message, state: FSMContext, session: AsyncSess
     channel_binding = await channel_repo.get_by_project_id(project_id)
     sources = await source_repo.list_by_project(project_id)
     drafts = await drafts_service.list_drafts(project_id, limit=STATUS_DRAFTS_LIMIT)
+    approval_drafts = await drafts_service.list_by_status(project_id, status="needs_approval", limit=50)
+    project_settings = await settings_repo.get_by_project_id(project_id)
+    schedule = await schedule_repo.get_by_project_id(project_id)
 
     settings = Settings()
     lines = [
@@ -335,12 +338,37 @@ async def status_handler(message: Message, state: FSMContext, session: AsyncSess
     items_total = await item_repo.count_by_project(project_id)
     items_new = await item_repo.count_new_by_project(project_id)
     lines.append(f"Материалы: всего={items_total}, новых={items_new}")
+    lines.append(f"Очереди: на одобрение={len(approval_drafts)}")
     lines.append(
         "Квоты: "
         f"драфты/день={settings.drafts_per_day}, "
         f"публикации/день={settings.publishes_per_day}, "
+        f"публикации/час={settings.publishes_per_hour}, "
         f"источники={settings.sources_limit}"
     )
+    if project_settings:
+        lines.append(
+            "Режимы: "
+            f"safe_mode={project_settings.safe_mode}, "
+            f"autopost={project_settings.autopost_enabled}"
+        )
+    if schedule:
+        lines.append(
+            "Расписание: "
+            f"enabled={schedule.enabled}, "
+            f"tz={schedule.tz}, "
+            f"slots={_format_slots(schedule.slots_json)}, "
+            f"limit/day={schedule.per_day_limit}"
+        )
+    usage = await usage_repo.get_by_project_day(project_id, datetime.now(timezone.utc).date())
+    if usage:
+        lines.append(
+            "Расходы сегодня: "
+            f"драфты={usage.drafts_generated}, "
+            f"посты={usage.posts_published}, "
+            f"llm={usage.llm_calls}, "
+            f"tokens~={usage.tokens_est}"
+        )
 
     if drafts:
         lines.append("Последние драфты:")
@@ -745,11 +773,13 @@ async def channel_check_handler(
     except ChannelBindingNotFoundError:
         await message.answer("Канал не подключен. Нажмите «Подключить канал».")
     except ChannelForbiddenError:
-        await message.answer("Нет прав писать в канал. Добавьте бота админом с правом писать.")
+        await message.answer(
+            "Нет прав писать в канал. Добавьте бота админом и выдайте право «Публиковать».",
+        )
     except ChannelNotFoundError:
-        await message.answer("Канал не найден. Проверь @username/ID и что бот добавлен.")
+        await message.answer("Канал не найден. Проверь @username/ID и что бот добавлен в канал.")
     except TelegramClientError:
-        await message.answer("Telegram недоступен. Попробуйте позже.")
+        await message.answer("Telegram недоступен. Проверь сеть и попробуй позже.")
     except SQLAlchemyError:
         await _handle_db_error(message)
 
@@ -764,7 +794,7 @@ async def add_rss_handler(message: Message, state: FSMContext) -> Any:
 async def save_rss_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
     url = (message.text or "").strip()
     if not url.startswith("http"):
-        await message.answer("Нужен корректный URL, начинающийся с http.")
+        await message.answer("Нужен корректный URL, начинающийся с http/https.")
         return
 
     project_id = await _resolve_project_id(message, state, session)
@@ -784,7 +814,10 @@ async def save_rss_handler(message: Message, state: FSMContext, session: AsyncSe
     except DuplicateSourceError:
         await message.answer("Такой источник уже добавлен.", reply_markup=_build_keyboard(SOURCE_MENU))
     except QuotaExceededError:
-        await message.answer("Достигнут лимит источников для проекта.", reply_markup=_build_keyboard(SOURCE_MENU))
+        await message.answer(
+            "Лимит источников исчерпан. Удали старые или подожди до обновления лимитов.",
+            reply_markup=_build_keyboard(SOURCE_MENU),
+        )
     except SQLAlchemyError:
         await _handle_db_error(message)
 
@@ -799,7 +832,7 @@ async def add_url_handler(message: Message, state: FSMContext) -> Any:
 async def save_url_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
     url = (message.text or "").strip()
     if not url.startswith("http"):
-        await message.answer("Нужен корректный URL, начинающийся с http.")
+        await message.answer("Нужен корректный URL, начинающийся с http/https.")
         return
 
     project_id = await _resolve_project_id(message, state, session)
@@ -819,7 +852,10 @@ async def save_url_handler(message: Message, state: FSMContext, session: AsyncSe
     except DuplicateSourceError:
         await message.answer("Такой источник уже добавлен.", reply_markup=_build_keyboard(SOURCE_MENU))
     except QuotaExceededError:
-        await message.answer("Достигнут лимит источников для проекта.", reply_markup=_build_keyboard(SOURCE_MENU))
+        await message.answer(
+            "Лимит источников исчерпан. Удали старые или подожди до обновления лимитов.",
+            reply_markup=_build_keyboard(SOURCE_MENU),
+        )
     except SQLAlchemyError:
         await _handle_db_error(message)
 
@@ -876,13 +912,15 @@ async def fetch_now_handler(message: Message, state: FSMContext, session: AsyncS
     service = SourceService(session)
     sources = await service.list_sources(project_id)
     if not sources:
-        await message.answer("Нет источников для обновления. Добавьте RSS источник.")
+        await message.answer("Нет источников для обновления. Добавьте RSS или URL источник.")
         return
 
     try:
         total_saved = await service.fetch_all_for_project(project_id)
     except Exception:  # noqa: BLE001
-        await message.answer("Не удалось обновить источники. Попробуйте позже.")
+        await message.answer(
+            "Не удалось обновить источники. Проверь URL, доступность сайта и формат RSS/страницы.",
+        )
         return
 
     await message.answer(
@@ -935,7 +973,9 @@ async def generate_now_handler(
     try:
         await quota_service.ensure_can_generate(project_id)
     except QuotaExceededError as exc:
-        await message.answer(str(exc))
+        await message.answer(
+            "Лимит генераций исчерпан. Подожди до обновления лимитов и попробуй позже.",
+        )
         return
 
     cooldown = _resolve_cooldown_store(cooldown_store)
@@ -1051,7 +1091,7 @@ async def publish_draft_handler(
     try:
         await quota_service.ensure_can_publish(project_id)
     except QuotaExceededError as exc:
-        await callback.answer(str(exc))
+        await callback.answer("Лимит публикаций исчерпан. Подожди до обновления лимитов.")
         return
 
     store = _resolve_publish_store(publish_store)

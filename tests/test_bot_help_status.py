@@ -31,7 +31,7 @@ async def test_help_command_smoke() -> None:
     await help_handler(message=message)
 
     assert message.answers
-    assert "Чеклист" in message.answers[0]
+    assert "Короткий чеклист" in message.answers[0]
 
 
 @pytest.mark.asyncio
