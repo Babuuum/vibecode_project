@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_base_url: str = "http://llm:8000"
     llm_mode: str = Field(default="economy", description="economy|normal")
+    llm_calls_per_day: int = 200
     drafts_per_day: int = 20
     publishes_per_day: int = 20
     publishes_per_hour: int = 5

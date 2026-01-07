@@ -20,7 +20,7 @@ class FakeRedis:
 @pytest.mark.asyncio
 async def test_quota_service_limits() -> None:
     redis = FakeRedis()
-    settings = Settings(drafts_per_day=1, publishes_per_day=1)
+    settings = Settings(drafts_per_day=1, publishes_per_day=1, llm_calls_per_day=1)
     quota = QuotaService(redis, settings=settings)
 
     await quota.ensure_can_generate(project_id=1)
@@ -30,3 +30,7 @@ async def test_quota_service_limits() -> None:
     await quota.ensure_can_publish(project_id=2)
     with pytest.raises(QuotaExceededError):
         await quota.ensure_can_publish(project_id=2)
+
+    await quota.ensure_can_call_llm(project_id=3)
+    with pytest.raises(QuotaExceededError):
+        await quota.ensure_can_call_llm(project_id=3)

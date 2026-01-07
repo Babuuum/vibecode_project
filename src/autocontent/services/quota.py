@@ -22,6 +22,8 @@ class QuotaBackend(Protocol):
 
     async def ensure_can_add_source(self, current_sources: int) -> None: ...
 
+    async def ensure_can_call_llm(self, project_id: int) -> None: ...
+
 
 class NoopQuotaService:
     async def ensure_can_generate(self, project_id: int) -> None:  # noqa: ARG002
@@ -31,6 +33,9 @@ class NoopQuotaService:
         return
 
     async def ensure_can_add_source(self, current_sources: int) -> None:  # noqa: ARG002
+        return
+
+    async def ensure_can_call_llm(self, project_id: int) -> None:  # noqa: ARG002
         return
 
 
@@ -67,3 +72,8 @@ class QuotaService:
     async def ensure_can_add_source(self, current_sources: int) -> None:
         if current_sources >= self._settings.sources_limit:
             raise QuotaExceededError("Sources limit exceeded")
+
+    async def ensure_can_call_llm(self, project_id: int) -> None:
+        await self._increment_with_limit(
+            self._key("llm_calls", project_id), self._settings.llm_calls_per_day
+        )
