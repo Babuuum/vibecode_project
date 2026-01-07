@@ -4,6 +4,8 @@ import asyncio
 from datetime import datetime, timezone
 
 from aiogram import Bot
+from celery import current_task
+import structlog
 
 from autocontent.config import Settings
 from autocontent.infrastructure.celery_app import celery_app
@@ -17,6 +19,14 @@ from autocontent.shared.lock import InMemoryLockStore, RedisLockStore
 from autocontent.services.quota import QuotaService
 from autocontent.repos import ScheduleRepository, SourceRepository
 from autocontent.integrations.task_queue import CeleryTaskQueue
+from autocontent.shared.logging import bind_log_context, clear_log_context, configure_logging
+
+
+def _safe_job_id() -> str | None:
+    try:
+        return current_task.request.id
+    except Exception:
+        return None
 
 try:
     from redis import asyncio as aioredis
@@ -26,6 +36,10 @@ except Exception:  # pragma: no cover
 
 @celery_app.task(name="fetch_source")
 def fetch_source_task(source_id: int) -> None:
+    configure_logging()
+    logger = structlog.get_logger(__name__)
+    bind_log_context(job_id=_safe_job_id(), source_id=source_id)
+    logger.info("task_start", task_name="fetch_source")
     async def _run() -> None:
         settings = Settings()
         engine = create_engine_from_settings(settings)
@@ -47,11 +61,18 @@ def fetch_source_task(source_id: int) -> None:
             )
         await engine.dispose()
 
-    asyncio.run(_run())
+    try:
+        asyncio.run(_run())
+    finally:
+        clear_log_context()
 
 
 @celery_app.task(name="fetch_all_sources")
 def fetch_all_sources_task() -> None:
+    configure_logging()
+    logger = structlog.get_logger(__name__)
+    bind_log_context(job_id=_safe_job_id())
+    logger.info("task_start", task_name="fetch_all_sources")
     async def _run() -> None:
         settings = Settings()
         engine = create_engine_from_settings(settings)
@@ -81,11 +102,18 @@ def fetch_all_sources_task() -> None:
                 )
         await engine.dispose()
 
-    asyncio.run(_run())
+    try:
+        asyncio.run(_run())
+    finally:
+        clear_log_context()
 
 
 @celery_app.task(name="generate_draft")
 def generate_draft_task(source_item_id: int) -> None:
+    configure_logging()
+    logger = structlog.get_logger(__name__)
+    bind_log_context(job_id=_safe_job_id(), source_item_id=source_item_id)
+    logger.info("task_start", task_name="generate_draft")
     async def _run() -> None:
         settings = Settings()
         engine = create_engine_from_settings(settings)
@@ -102,7 +130,10 @@ def generate_draft_task(source_item_id: int) -> None:
             await service.generate_draft(source_item_id)
         await engine.dispose()
 
-    asyncio.run(_run())
+    try:
+        asyncio.run(_run())
+    finally:
+        clear_log_context()
 
 
 @celery_app.task(
@@ -112,6 +143,10 @@ def generate_draft_task(source_item_id: int) -> None:
     retry_kwargs={"max_retries": 3},
 )
 def publish_draft_task(draft_id: int) -> None:
+    configure_logging()
+    logger = structlog.get_logger(__name__)
+    bind_log_context(job_id=_safe_job_id(), draft_id=draft_id)
+    logger.info("task_start", task_name="publish_draft")
     async def _run() -> None:
         settings = Settings()
         engine = create_engine_from_settings(settings)
@@ -139,11 +174,18 @@ def publish_draft_task(draft_id: int) -> None:
             await service.publish_draft(draft_id)
         await engine.dispose()
 
-    asyncio.run(_run())
+    try:
+        asyncio.run(_run())
+    finally:
+        clear_log_context()
 
 
 @celery_app.task(name="publish_due_drafts")
 def publish_due_drafts_task() -> None:
+    configure_logging()
+    logger = structlog.get_logger(__name__)
+    bind_log_context(job_id=_safe_job_id())
+    logger.info("task_start", task_name="publish_due_drafts")
     async def _run() -> None:
         settings = Settings()
         engine = create_engine_from_settings(settings)
@@ -172,4 +214,7 @@ def publish_due_drafts_task() -> None:
                 await service.publish_due(schedule.project_id, now=now)
         await engine.dispose()
 
-    asyncio.run(_run())
+    try:
+        asyncio.run(_run())
+    finally:
+        clear_log_context()

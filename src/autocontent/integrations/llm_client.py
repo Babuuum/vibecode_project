@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import time
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Protocol
 
 import httpx
+import structlog
 
 
 @dataclass
@@ -42,7 +42,7 @@ def _apply_max(request: LLMRequest, default_max_tokens: int) -> int:
 class MockLLMClient:
     def __init__(self, default_max_tokens: int = 128) -> None:
         self.default_max_tokens = default_max_tokens
-        self._logger = logging.getLogger(__name__)
+        self._logger = structlog.get_logger(__name__)
 
     async def generate(self, request: LLMRequest) -> LLMResponse:
         start = time.perf_counter()
@@ -55,12 +55,9 @@ class MockLLMClient:
 
         duration_ms = int((time.perf_counter() - start) * 1000)
         self._logger.info(
-            "LLM call",
-            extra={
-                "event": "llm_call",
-                "duration_ms": duration_ms,
-                "tokens_estimated": tokens_estimated,
-            },
+            "llm_call",
+            duration_ms=duration_ms,
+            tokens_estimated=tokens_estimated,
         )
         return LLMResponse(content=content, tokens_estimated=tokens_estimated)
 
@@ -83,7 +80,7 @@ class RealLLMClient:
         self.default_max_tokens = default_max_tokens
         self.max_retries = max_retries
         self.timeout = timeout
-        self._logger = logging.getLogger(__name__)
+        self._logger = structlog.get_logger(__name__)
         self._sender = sender or self._send_http
 
     async def _send_http(self, payload: dict) -> str:
@@ -109,13 +106,10 @@ class RealLLMClient:
                 tokens_estimated = _estimate_tokens(content, max_tokens)
                 duration_ms = int((time.perf_counter() - start) * 1000)
                 self._logger.info(
-                    "LLM call",
-                    extra={
-                        "event": "llm_call",
-                        "duration_ms": duration_ms,
-                        "tokens_estimated": tokens_estimated,
-                        "attempt": attempt + 1,
-                    },
+                    "llm_call",
+                    duration_ms=duration_ms,
+                    tokens_estimated=tokens_estimated,
+                    attempt=attempt + 1,
                 )
                 return LLMResponse(content=content, tokens_estimated=tokens_estimated)
             except Exception as exc:  # noqa: BLE001

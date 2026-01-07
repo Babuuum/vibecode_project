@@ -3,12 +3,14 @@ from __future__ import annotations
 from celery import Celery
 
 from autocontent.config import Settings
+from autocontent.shared.logging import configure_logging
 
 try:
     import sentry_sdk
 except Exception:  # pragma: no cover
     sentry_sdk = None
 
+configure_logging()
 settings = Settings()
 if sentry_sdk and settings.sentry_dsn:
     sentry_sdk.init(dsn=settings.sentry_dsn, environment=settings.environment)

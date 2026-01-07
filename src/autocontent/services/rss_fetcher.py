@@ -7,6 +7,7 @@ import feedparser
 import httpx
 from bs4 import BeautifulSoup
 from sqlalchemy.ext.asyncio import AsyncSession
+import structlog
 
 from autocontent.domain import Source
 from autocontent.config import Settings
@@ -38,6 +39,7 @@ async def fetch_and_save_source(
     max_items_per_run: int | None = None,
     url_client: URLClient | None = None,
 ) -> tuple[Source | None, int]:
+    logger = structlog.get_logger(__name__)
     rss_client = rss_client or HttpRSSClient()
     url_client = url_client or HttpURLClient()
 
@@ -47,6 +49,7 @@ async def fetch_and_save_source(
     source = await source_repo.get_by_id(source_id)
     if not source:
         return None, 0
+    logger.info("source_fetch_start", project_id=source.project_id, source_id=source.id)
 
     try:
         saved = 0
@@ -109,6 +112,12 @@ async def fetch_and_save_source(
                 limit = max_items_per_run or settings.max_generate_per_fetch
                 for item_id in created_items[:limit]:
                     task_queue.enqueue_generate_draft(item_id)
+        logger.info(
+            "source_fetch_done",
+            project_id=source.project_id,
+            source_id=source.id,
+            items_saved=saved,
+        )
         return source, saved
     except httpx.TimeoutException:
         await _handle_fetch_error(source, source_repo, "timeout")

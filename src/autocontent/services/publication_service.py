@@ -6,6 +6,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
+import structlog
 
 from autocontent.config import Settings
 from autocontent.integrations.telegram_client import (
@@ -53,6 +54,7 @@ class PublicationService:
         self._settings = settings or Settings()
 
     async def publish_draft(self, draft_id: int, max_retries: int = 2) -> PublicationLog:
+        logger = structlog.get_logger(__name__)
         key = f"publish:{draft_id}"
         acquired = await self._idempotency.acquire(key, PUBLISH_TTL)
         if not acquired:
@@ -69,6 +71,11 @@ class PublicationService:
         if not channel or channel.status != "connected":
             raise PublicationError("Channel not connected")
 
+        logger.info(
+            "draft_publish_start",
+            project_id=draft.project_id,
+            draft_id=draft.id,
+        )
         try:
             await self._quota.ensure_can_publish(draft.project_id)
         except QuotaExceededError as exc:
@@ -98,6 +105,12 @@ class PublicationService:
                     project_id=draft.project_id,
                     day=_today_utc(),
                     posts_published=1,
+                )
+                logger.info(
+                    "draft_published",
+                    project_id=draft.project_id,
+                    draft_id=draft.id,
+                    log_id=log.id,
                 )
                 return log
             except (TransientTelegramError,) as exc:
@@ -174,6 +187,12 @@ class PublicationService:
             project_id=project_id,
             day=_today_utc(),
             posts_published=1,
+        )
+        logger.info(
+            "draft_published",
+            project_id=project_id,
+            draft_id=draft.id,
+            log_id=log.id,
         )
         return log
 

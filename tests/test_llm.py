@@ -1,3 +1,4 @@
+import json
 import logging
 
 import httpx
@@ -73,7 +74,14 @@ async def test_mock_llm_logs_event(caplog: pytest.LogCaptureFixture) -> None:
 
     await client.generate(LLMRequest(prompt="abcd", seed=1))
 
-    assert any(record.event == "llm_call" for record in caplog.records)
+    events = []
+    for record in caplog.records:
+        try:
+            payload = json.loads(record.message)
+        except json.JSONDecodeError:
+            continue
+        events.append(payload.get("event"))
+    assert "llm_call" in events
 
 
 @pytest.mark.asyncio

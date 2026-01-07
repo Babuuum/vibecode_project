@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
+import structlog
 
 from autocontent.config import Settings
 from autocontent.domain import PostDraft, SourceItem
@@ -47,6 +48,7 @@ class DraftService:
         self._quota = quota_service or NoopQuotaService()
 
     async def generate_draft(self, source_item_id: int, template_id: str | None = None) -> PostDraft:
+        logger = structlog.get_logger(__name__)
         item = await self._items.get_by_id(source_item_id)
         if not item:
             raise DraftGenerationError("Source item not found")
@@ -55,6 +57,12 @@ class DraftService:
         if not source:
             raise DraftGenerationError("Source not found")
 
+        logger.info(
+            "draft_generate_start",
+            project_id=source.project_id,
+            source_id=source.id,
+            source_item_id=item.id,
+        )
         await self._quota.ensure_can_generate(source.project_id)
 
         settings = await self._settings_repo.get_by_project_id(source.project_id)
@@ -106,6 +114,11 @@ class DraftService:
             project_id=source.project_id,
             day=_today_utc(),
             drafts_generated=1,
+        )
+        logger.info(
+            "draft_generated",
+            project_id=source.project_id,
+            draft_id=draft.id,
         )
         return draft
 

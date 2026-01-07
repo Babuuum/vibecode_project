@@ -4,8 +4,10 @@ import uvicorn
 from fastapi import FastAPI
 
 from autocontent.api.routes import api_router
+from autocontent.api.middleware import RequestIdMiddleware
 from autocontent.config import Settings
 from autocontent.shared.db import create_engine_from_settings, create_session_factory
+from autocontent.shared.logging import configure_logging
 
 try:
     import sentry_sdk
@@ -14,6 +16,7 @@ except Exception:  # pragma: no cover
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
+    configure_logging()
     settings = settings or Settings()
     if sentry_sdk and settings.sentry_dsn:
         sentry_sdk.init(dsn=settings.sentry_dsn, environment=settings.environment)
@@ -22,6 +25,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     engine = create_engine_from_settings(settings)
     app.state.engine = engine
     app.state.session_factory = create_session_factory(engine)
+    app.add_middleware(RequestIdMiddleware)
     app.include_router(api_router)
 
     @app.on_event("shutdown")
