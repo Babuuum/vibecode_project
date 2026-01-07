@@ -8,6 +8,8 @@ from autocontent.repos import (
     ChannelBindingRepository,
     PostDraftRepository,
     ProjectRepository,
+    ProjectSettingsRepository,
+    ScheduleRepository,
     SourceItemRepository,
     SourceRepository,
     UserRepository,
@@ -123,6 +125,50 @@ async def test_e2e_happy_path(session) -> None:
 
 
 @pytest.mark.asyncio
+async def test_e2e_pipeline_with_approval(session) -> None:
+    settings = Settings()
+    user_repo = UserRepository(session)
+    project_repo = ProjectRepository(session)
+    channel_repo = ChannelBindingRepository(session)
+    source_repo = SourceRepository(session)
+    item_repo = SourceItemRepository(session)
+    drafts_repo = PostDraftRepository(session)
+
+    user = await user_repo.create_user(tg_id=110)
+    project = await project_repo.create_project(owner_user_id=user.id, title="P-approve", tz="UTC")
+    await channel_repo.create_or_update(project_id=project.id, channel_id="@ch", channel_username="@ch")
+    await channel_repo.update_status(project_id=project.id, status="connected", last_error=None)
+
+    source_service = SourceService(session, settings=settings)
+    await source_service.add_source(project_id=project.id, url="http://example.com/rss-approve")
+    source = await source_repo.list_by_project(project.id)
+    assert source
+    rss_client = FakeRSSClient(RSS_SAMPLE)
+    await fetch_and_save_source(source[0].id, session, rss_client=rss_client)
+
+    item = await item_repo.get_latest_new_for_project(project.id)
+    assert item is not None
+
+    draft_service = DraftService(session, llm_client=MockLLMClient(default_max_tokens=50), settings=settings)
+    draft = await draft_service.generate_draft(item.id)
+    await draft_service.set_status(draft.id, "needs_approval")
+    await draft_service.set_status(draft.id, "ready")
+
+    telegram = MockTelegramClient()
+    publish_service = PublicationService(
+        session=session,
+        telegram_client=telegram,
+        idempotency_store=InMemoryIdempotencyStore(),
+    )
+    log = await publish_service.publish_draft(draft.id)
+
+    assert log.status == "published"
+    assert telegram.sent and telegram.sent[0][1] == draft.text
+    draft_after = await drafts_repo.get_by_id(draft.id)
+    assert draft_after is not None and draft_after.status == "published"
+
+
+@pytest.mark.asyncio
 async def test_e2e_quota_block(session) -> None:
     settings = Settings(drafts_per_day=1, publishes_per_day=1)
     redis = FakeRedis()
@@ -183,3 +229,87 @@ async def test_e2e_broken_source_after_failures(session) -> None:
     assert updated.status == "broken"
     assert updated.consecutive_failures == settings.source_fail_threshold
     assert "fail" in (updated.last_error or "")
+
+
+@pytest.mark.asyncio
+async def test_e2e_publish_due_and_safe_mode(session) -> None:
+    settings = Settings()
+    user_repo = UserRepository(session)
+    project_repo = ProjectRepository(session)
+    settings_repo = ProjectSettingsRepository(session)
+    channel_repo = ChannelBindingRepository(session)
+    source_repo = SourceRepository(session)
+    item_repo = SourceItemRepository(session)
+    draft_repo = PostDraftRepository(session)
+    schedule_repo = ScheduleRepository(session)
+
+    user = await user_repo.create_user(tg_id=400)
+    project = await project_repo.create_project(owner_user_id=user.id, title="P4", tz="UTC")
+    await settings_repo.create_settings(
+        project_id=project.id,
+        language="en",
+        niche="tech",
+        tone="formal",
+        safe_mode=False,
+        autopost_enabled=False,
+    )
+    await channel_repo.create_or_update(project_id=project.id, channel_id="@ch", channel_username="@ch")
+    await channel_repo.update_status(project_id=project.id, status="connected", last_error=None)
+    source = await source_repo.create_source(project_id=project.id, url="http://example.com/feed")
+    item = await item_repo.create_item(
+        source_id=source.id,
+        external_id="x1",
+        link="http://example.com/1",
+        title="Title",
+        published_at=None,
+        raw_text="Body",
+        content_hash=compute_content_hash("http://example.com/1", "Title", "Body"),
+    )
+    assert item is not None
+    draft = await draft_repo.create_draft(
+        project_id=project.id,
+        source_item_id=item.id,
+        template_id=None,
+        text="Draft body",
+        draft_hash=draft_repo.compute_draft_hash(project.id, item.id, None, item.raw_text or ""),
+        status="ready",
+    )
+    await schedule_repo.create_schedule(
+        project_id=project.id,
+        tz="UTC",
+        slots=["10:00"],
+        per_day_limit=1,
+        enabled=True,
+    )
+
+    client = MockTelegramClient()
+    service = PublicationService(session, telegram_client=client)
+    now = datetime(2025, 1, 1, 10, 2, tzinfo=timezone.utc)
+    log = await service.publish_due(project.id, now=now)
+
+    assert log is not None
+    assert log.status == "published"
+
+    await settings_repo.upsert_settings(
+        project_id=project.id,
+        language="en",
+        niche="tech",
+        tone="formal",
+        template_id=None,
+        max_post_len=1000,
+        safe_mode=True,
+        autopost_enabled=False,
+    )
+    draft2 = await draft_repo.create_draft(
+        project_id=project.id,
+        source_item_id=item.id,
+        template_id="safe",
+        text="Draft body 2",
+        draft_hash=draft_repo.compute_draft_hash(project.id, item.id, "safe", item.raw_text or ""),
+        status="ready",
+    )
+    log2 = await service.publish_due(project.id, now=now)
+    assert log2 is None
+    updated = await draft_repo.get_by_id(draft2.id)
+    assert updated is not None
+    assert updated.status == "needs_approval"
