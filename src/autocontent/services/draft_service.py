@@ -129,6 +129,9 @@ class DraftService:
     async def list_drafts(self, project_id: int, limit: int = 10) -> list[PostDraft]:
         return await self._drafts.list_latest(project_id, limit=limit)
 
+    async def list_by_status(self, project_id: int, status: str, limit: int = 10) -> list[PostDraft]:
+        return await self._drafts.list_by_project(project_id, status=status, limit=limit)
+
     async def get_draft(self, draft_id: int) -> PostDraft | None:
         return await self._drafts.get_by_id(draft_id)
 

@@ -78,7 +78,7 @@ LANGUAGE_OPTIONS = ["en", "ru"]
 NICHE_OPTIONS = ["tech", "marketing", "lifestyle"]
 TONE_OPTIONS = ["friendly", "formal", "casual"]
 CHANNEL_MENU = ["Настройки", "Подключить канал", "Проверить"]
-DRAFT_MENU = ["Сгенерировать сейчас", "Черновики"]
+DRAFT_MENU = ["Сгенерировать сейчас", "Черновики", "На одобрение"]
 TEMPLATE_MENU = [f"Шаблон: {preset.template_id}" for preset in TEMPLATE_PRESETS.values()] + ["Назад"]
 AUTPOST_MENU = [
     "Автопостинг: Вкл",
@@ -967,6 +967,26 @@ async def drafts_list_handler(message: Message, state: FSMContext, session: Asyn
     lines = [f"{draft.id}: [{draft.status}] {draft.text[:80]}" for draft in drafts]
     lines.append("Для просмотра: /draft <id>")
     await message.answer("\n".join(lines), reply_markup=_build_keyboard(SOURCE_MENU))
+
+
+@router.message(F.text == "На одобрение")
+async def drafts_approval_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
+    project_id = await _resolve_project_id(message, state, session)
+    if not project_id:
+        await message.answer("Проект не найден, начните /start.")
+        return
+
+    service = DraftService(session)
+    drafts = await service.list_by_status(project_id, status="needs_approval", limit=10)
+    if not drafts:
+        await message.answer("Драфтов на одобрение нет.")
+        return
+
+    for draft in drafts:
+        await message.answer(
+            f"Драфт #{draft.id} [needs_approval]:\n{draft.text}",
+            reply_markup=_draft_actions_keyboard(draft.id),
+        )
 
 
 @router.message(Command("draft"))

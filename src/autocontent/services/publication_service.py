@@ -20,6 +20,7 @@ from autocontent.integrations.telegram_client import (
 from autocontent.repos import (
     ChannelBindingRepository,
     PostDraftRepository,
+    ProjectSettingsRepository,
     PublicationLogRepository,
     ScheduleRepository,
     UsageCounterRepository,
@@ -51,6 +52,7 @@ class PublicationService:
         self._drafts = PostDraftRepository(session)
         self._logs = PublicationLogRepository(session)
         self._channels = ChannelBindingRepository(session)
+        self._settings_repo = ProjectSettingsRepository(session)
         self._usage = UsageCounterRepository(session)
         self._session = session
         self._telegram_client = telegram_client
@@ -178,6 +180,11 @@ class PublicationService:
 
         draft = await self._drafts.get_next_ready(project_id)
         if not draft:
+            return None
+
+        settings = await self._settings_repo.get_by_project_id(project_id)
+        if settings and settings.safe_mode:
+            await self._drafts.update_status(draft.id, "needs_approval")
             return None
 
         scheduled_at_utc = scheduled_at.astimezone(timezone.utc)
