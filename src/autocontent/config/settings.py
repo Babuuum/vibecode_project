@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     url_fetch_timeout_sec: int = 10
     url_max_chars: int = 200000
     url_text_max_chars: int = 8000
+    source_text_max_chars: int = 8000
 
     @property
     def llm_max_tokens(self) -> int:

@@ -9,6 +9,33 @@ def normalize_text(text: str) -> str:
     return normalized
 
 
+_SUSPICIOUS_PATTERNS = [
+    r"ignore\s+previous",
+    r"system\s+prompt",
+    r"developer\s+message",
+    r"you\s+are\s+chatgpt",
+    r"act\s+as",
+    r"follow\s+these\s+instructions",
+    r"do\s+not\s+follow",
+]
+
+
+def sanitize_raw_text(text: str, max_chars: int) -> str:
+    cleaned = text or ""
+    for pattern in _SUSPICIOUS_PATTERNS:
+        cleaned = re.sub(
+            rf"[^.?!]*{pattern}[^.?!]*[.?!]?",
+            " ",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
+    cleaned = normalize_text(cleaned)
+    if len(cleaned) > max_chars:
+        cleaned = cleaned[:max_chars]
+    return cleaned
+
+
 def compute_content_hash(*parts: str) -> str:
     normalized_parts = [normalize_text(part) for part in parts]
     payload = "|".join(normalized_parts).encode("utf-8")
