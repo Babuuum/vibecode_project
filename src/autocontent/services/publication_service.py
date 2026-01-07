@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import date, datetime, time, timedelta, timezone
+from typing import Awaitable, Callable
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +13,7 @@ from autocontent.config import Settings
 from autocontent.integrations.telegram_client import (
     ChannelForbiddenError,
     ChannelNotFoundError,
+    RetryAfterError,
     TelegramClient,
     TransientTelegramError,
 )
@@ -23,6 +25,7 @@ from autocontent.repos import (
     UsageCounterRepository,
 )
 from autocontent.services.quota import NoopQuotaService, QuotaBackend, QuotaExceededError
+from autocontent.services.rate_limit import NoopRateLimiter, RateLimitExceededError, RateLimiter
 from autocontent.shared.idempotency import IdempotencyStore, InMemoryIdempotencyStore
 
 
@@ -41,6 +44,8 @@ class PublicationService:
         telegram_client: TelegramClient,
         idempotency_store: IdempotencyStore | None = None,
         quota_service: QuotaBackend | None = None,
+        rate_limiter: RateLimiter | None = None,
+        sleep_fn: Callable[[float], Awaitable[None]] | None = None,
         settings: Settings | None = None,
     ) -> None:
         self._drafts = PostDraftRepository(session)
@@ -51,7 +56,9 @@ class PublicationService:
         self._telegram_client = telegram_client
         self._idempotency = idempotency_store or InMemoryIdempotencyStore()
         self._quota = quota_service or NoopQuotaService()
+        self._rate_limiter = rate_limiter or NoopRateLimiter()
         self._settings = settings or Settings()
+        self._sleep = sleep_fn or asyncio.sleep
 
     async def publish_draft(self, draft_id: int, max_retries: int = 2) -> PublicationLog:
         logger = structlog.get_logger(__name__)
@@ -87,6 +94,17 @@ class PublicationService:
                 error_text=str(exc),
             )
             raise
+        try:
+            await self._rate_limiter.ensure_can_publish(draft.project_id)
+        except RateLimitExceededError as exc:
+            await self._drafts.update_status(draft.id, "failed")
+            await self._logs.create_log(
+                draft_id=draft.id,
+                status="failed",
+                error_code="rate_limit",
+                error_text=f"retry_after={exc.retry_after}",
+            )
+            raise
 
         attempt = 0
         last_exc: Exception | None = None
@@ -113,12 +131,18 @@ class PublicationService:
                     log_id=log.id,
                 )
                 return log
+            except RetryAfterError as exc:
+                last_exc = exc
+                attempt += 1
+                if attempt > max_retries:
+                    break
+                await self._sleep(exc.retry_after)
             except (TransientTelegramError,) as exc:
                 last_exc = exc
                 attempt += 1
                 if attempt > max_retries:
                     break
-                await asyncio.sleep(0.5 * attempt)
+                await self._sleep(0.5 * attempt)
             except (ChannelForbiddenError, ChannelNotFoundError, PublicationError) as exc:
                 await self._drafts.update_status(draft.id, "failed")
                 return await self._logs.create_log(
@@ -172,6 +196,7 @@ class PublicationService:
             return None
 
         await self._quota.ensure_can_publish(project_id)
+        await self._rate_limiter.ensure_can_publish(project_id)
 
         message_id = await self._telegram_client.send_post(channel.channel_id, draft.text)
         draft.status = "published"

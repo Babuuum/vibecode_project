@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     llm_mode: str = Field(default="economy", description="economy|normal")
     drafts_per_day: int = 20
     publishes_per_day: int = 20
+    publishes_per_hour: int = 5
     sources_limit: int = 10
     fetch_interval_min: int = 10
     source_fail_threshold: int = 3

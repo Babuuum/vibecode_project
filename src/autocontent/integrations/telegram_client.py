@@ -4,7 +4,12 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramNetworkError
+from aiogram.exceptions import (
+    TelegramBadRequest,
+    TelegramForbiddenError,
+    TelegramNetworkError,
+    TelegramRetryAfter,
+)
 
 
 class TelegramClientError(Exception):
@@ -21,6 +26,14 @@ class ChannelForbiddenError(TelegramClientError):
 
 class TransientTelegramError(TelegramClientError):
     """Retryable Telegram transport error."""
+
+
+class RetryAfterError(TelegramClientError):
+    """Rate limited by Telegram."""
+
+    def __init__(self, retry_after: int) -> None:
+        super().__init__("Retry after")
+        self.retry_after = retry_after
 
 
 class TelegramClient(ABC):
@@ -45,6 +58,8 @@ class AiogramTelegramClient(TelegramClient):
             except TelegramBadRequest:
                 # Ignore if we cannot delete
                 pass
+        except TelegramRetryAfter as exc:
+            raise RetryAfterError(exc.retry_after) from exc
         except TelegramForbiddenError as exc:
             raise ChannelForbiddenError("Нет прав на отправку в канал.") from exc
         except TelegramBadRequest as exc:
@@ -56,6 +71,8 @@ class AiogramTelegramClient(TelegramClient):
         try:
             message = await self._bot.send_message(chat_id=channel_id, text=text)
             return str(message.message_id)
+        except TelegramRetryAfter as exc:
+            raise RetryAfterError(exc.retry_after) from exc
         except TelegramForbiddenError as exc:
             raise ChannelForbiddenError("Бот не может отправить сообщение в канал.") from exc
         except TelegramBadRequest as exc:

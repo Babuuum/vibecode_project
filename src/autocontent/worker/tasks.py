@@ -17,6 +17,7 @@ from autocontent.shared.db import create_engine_from_settings, create_session_fa
 from autocontent.shared.idempotency import InMemoryIdempotencyStore, RedisIdempotencyStore
 from autocontent.shared.lock import InMemoryLockStore, RedisLockStore
 from autocontent.services.quota import QuotaService
+from autocontent.services.rate_limit import RedisRateLimiter
 from autocontent.repos import ScheduleRepository, SourceRepository
 from autocontent.integrations.task_queue import CeleryTaskQueue
 from autocontent.shared.logging import bind_log_context, clear_log_context, configure_logging
@@ -153,11 +154,13 @@ def publish_draft_task(draft_id: int) -> None:
         session_factory = create_session_factory(engine)
         idempotency_store = InMemoryIdempotencyStore()
         quota_service = None
+        rate_limiter = None
         if aioredis:
             try:
                 redis_client = aioredis.from_url(settings.redis_url)
                 idempotency_store = RedisIdempotencyStore(redis_client)
                 quota_service = QuotaService(redis_client, settings=settings)
+                rate_limiter = RedisRateLimiter(redis_client, settings=settings)
             except Exception:
                 pass
 
@@ -169,6 +172,7 @@ def publish_draft_task(draft_id: int) -> None:
                 telegram_client=telegram_client,
                 idempotency_store=idempotency_store,
                 quota_service=quota_service,
+                rate_limiter=rate_limiter,
                 settings=settings,
             )
             await service.publish_draft(draft_id)
@@ -191,10 +195,12 @@ def publish_due_drafts_task() -> None:
         engine = create_engine_from_settings(settings)
         session_factory = create_session_factory(engine)
         quota_service = None
+        rate_limiter = None
         if aioredis:
             try:
                 redis_client = aioredis.from_url(settings.redis_url)
                 quota_service = QuotaService(redis_client, settings=settings)
+                rate_limiter = RedisRateLimiter(redis_client, settings=settings)
             except Exception:
                 quota_service = None
 
@@ -205,6 +211,7 @@ def publish_due_drafts_task() -> None:
                 session=session,
                 telegram_client=telegram_client,
                 quota_service=quota_service,
+                rate_limiter=rate_limiter,
                 settings=settings,
             )
             schedule_repo = ScheduleRepository(session)
