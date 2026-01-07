@@ -34,6 +34,16 @@ services:
     depends_on:
       - postgres
       - redis
+  beat:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command: celery -A src.autocontent.infrastructure.celery_app beat -l info
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - redis
 
   postgres:
     image: postgres:16-alpine

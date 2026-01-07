@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autocontent.domain import PostDraft, PublicationLog
@@ -52,14 +53,9 @@ class PublicationLogRepository:
         published_at=None,
         scheduled_at=None,
     ) -> PublicationLog:
-        if scheduled_at is not None:
-            existing = await self.get_by_draft_and_scheduled(draft_id, scheduled_at)
-            if existing:
-                return existing
-        else:
-            existing = await self.get_by_draft_id(draft_id)
-            if existing:
-                return existing
+        existing = await self.get_by_draft_id(draft_id)
+        if existing:
+            return existing
 
         log = PublicationLog(
             draft_id=draft_id,
@@ -71,6 +67,13 @@ class PublicationLogRepository:
             error_text=error_text,
         )
         self._session.add(log)
-        await self._session.commit()
-        await self._session.refresh(log)
-        return log
+        try:
+            await self._session.commit()
+            await self._session.refresh(log)
+            return log
+        except IntegrityError:
+            await self._session.rollback()
+            existing = await self.get_by_draft_id(draft_id)
+            if existing:
+                return existing
+            raise

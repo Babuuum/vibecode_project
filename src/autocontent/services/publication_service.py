@@ -163,6 +163,7 @@ class PublicationService:
         )
 
     async def publish_due(self, project_id: int, now: datetime) -> PublicationLog | None:
+        logger = structlog.get_logger(__name__)
         schedule_repo = ScheduleRepository(self._session)
         schedule = await schedule_repo.get_by_project_id(project_id)
         if not schedule or not schedule.enabled:
@@ -182,16 +183,16 @@ class PublicationService:
         if not draft:
             return None
 
+        existing_log = await self._logs.get_by_draft_id(draft.id)
+        if existing_log:
+            return existing_log
+
         settings = await self._settings_repo.get_by_project_id(project_id)
         if settings and settings.safe_mode:
             await self._drafts.update_status(draft.id, "needs_approval")
             return None
 
         scheduled_at_utc = scheduled_at.astimezone(timezone.utc)
-        existing_log = await self._logs.get_by_draft_and_scheduled(draft.id, scheduled_at_utc)
-        if existing_log:
-            return existing_log
-
         day_start_local = datetime.combine(now_local.date(), time.min, tzinfo=tz)
         day_end_local = day_start_local + timedelta(days=1)
         day_start_utc = day_start_local.astimezone(timezone.utc)

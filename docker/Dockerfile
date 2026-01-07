@@ -19,5 +19,7 @@ RUN poetry config virtualenvs.create false \
     && poetry install --no-root --only main
 
 COPY src ./src
+COPY alembic.ini ./
+COPY migrations ./migrations
 
 CMD ["uvicorn", "src.autocontent.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

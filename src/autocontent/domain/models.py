@@ -3,7 +3,19 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import List
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from autocontent.shared.db import Base
@@ -117,6 +129,13 @@ class PublicationLog(Base):
     __tablename__ = "publication_logs"
     __table_args__ = (
         UniqueConstraint("draft_id", "scheduled_at", name="uq_publication_draft_scheduled"),
+        Index(
+            "uq_publication_draft_unscheduled",
+            "draft_id",
+            unique=True,
+            sqlite_where=text("scheduled_at IS NULL"),
+            postgresql_where=text("scheduled_at IS NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
