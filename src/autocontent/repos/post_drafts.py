@@ -65,6 +65,16 @@ class PostDraftRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_by_project(
+        self, project_id: int, status: str | None = None, limit: int = 50
+    ) -> list[PostDraft]:
+        stmt = select(PostDraft).where(PostDraft.project_id == project_id)
+        if status:
+            stmt = stmt.where(PostDraft.status == status)
+        stmt = stmt.order_by(PostDraft.id.desc()).limit(limit)
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
     async def get_next_ready(self, project_id: int) -> PostDraft | None:
         stmt = (
             select(PostDraft)

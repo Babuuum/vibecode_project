@@ -28,3 +28,8 @@ class ProjectRepository:
         stmt = select(Project).where(Project.owner_user_id == owner_user_id).limit(1)
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def list_all(self) -> list[Project]:
+        stmt = select(Project).order_by(Project.id.asc())
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())

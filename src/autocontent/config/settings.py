@@ -34,6 +34,10 @@ class Settings(BaseSettings):
         default="dev-bot-token",
         description="Telegram bot token. Use a placeholder in development.",
     )
+    admin_api_key: str = Field(
+        default="dev-admin-key",
+        description="Admin API key for /admin endpoints.",
+    )
     sentry_dsn: str = Field(default="", description="Sentry DSN (optional).")
     sqlalchemy_echo: bool = False
     llm_provider: str = "mock"

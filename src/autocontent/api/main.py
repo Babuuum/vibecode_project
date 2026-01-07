@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from autocontent.api.routes import api_router
 from autocontent.config import Settings
+from autocontent.shared.db import create_engine_from_settings, create_session_factory
 
 try:
     import sentry_sdk
@@ -18,7 +19,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         sentry_sdk.init(dsn=settings.sentry_dsn, environment=settings.environment)
     app = FastAPI(title=settings.app_name, version="0.1.0")
     app.state.settings = settings
+    engine = create_engine_from_settings(settings)
+    app.state.engine = engine
+    app.state.session_factory = create_session_factory(engine)
     app.include_router(api_router)
+
+    @app.on_event("shutdown")
+    async def _shutdown() -> None:
+        await engine.dispose()
+
     return app
 
 
