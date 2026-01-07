@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +19,7 @@ from autocontent.repos import (
     PostDraftRepository,
     PublicationLogRepository,
     ScheduleRepository,
+    UsageCounterRepository,
 )
 from autocontent.services.quota import NoopQuotaService, QuotaBackend, QuotaExceededError
 from autocontent.shared.idempotency import IdempotencyStore, InMemoryIdempotencyStore
@@ -44,6 +45,7 @@ class PublicationService:
         self._drafts = PostDraftRepository(session)
         self._logs = PublicationLogRepository(session)
         self._channels = ChannelBindingRepository(session)
+        self._usage = UsageCounterRepository(session)
         self._session = session
         self._telegram_client = telegram_client
         self._idempotency = idempotency_store or InMemoryIdempotencyStore()
@@ -91,6 +93,11 @@ class PublicationService:
                     status="published",
                     tg_message_id=message_id,
                     published_at=datetime.now(timezone.utc),
+                )
+                await self._usage.increment(
+                    project_id=draft.project_id,
+                    day=_today_utc(),
+                    posts_published=1,
                 )
                 return log
             except (TransientTelegramError,) as exc:
@@ -163,6 +170,11 @@ class PublicationService:
             published_at=datetime.now(timezone.utc),
             scheduled_at=scheduled_at_utc,
         )
+        await self._usage.increment(
+            project_id=project_id,
+            day=_today_utc(),
+            posts_published=1,
+        )
         return log
 
 
@@ -201,3 +213,7 @@ def _resolve_due_slot(now_local: datetime, slots_json: str) -> datetime | None:
     if not candidates:
         return None
     return max(candidates)
+
+
+def _today_utc() -> date:
+    return datetime.now(timezone.utc).date()

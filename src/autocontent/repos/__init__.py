@@ -7,6 +7,7 @@ from .source_items import SourceItemRepository
 from .sources import SourceRepository
 from .users import UserRepository
 from .post_drafts import PostDraftRepository
+from .usage_counters import UsageCounterRepository
 
 __all__ = [
     "UserRepository",
@@ -18,4 +19,5 @@ __all__ = [
     "PostDraftRepository",
     "PublicationLogRepository",
     "ScheduleRepository",
+    "UsageCounterRepository",
 ]

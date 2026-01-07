@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import List
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from autocontent.shared.db import Base
@@ -142,3 +142,16 @@ class Schedule(Base):
     slots_json: Mapped[str] = mapped_column(Text, nullable=False)
     per_day_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class UsageCounter(Base):
+    __tablename__ = "usage_counters"
+    __table_args__ = (UniqueConstraint("project_id", "day", name="uq_usage_project_day"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    day: Mapped[Date] = mapped_column(Date, nullable=False)
+    drafts_generated: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    posts_published: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    llm_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tokens_est: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

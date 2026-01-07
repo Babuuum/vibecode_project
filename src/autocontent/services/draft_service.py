@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +12,7 @@ from autocontent.repos import (
     ProjectSettingsRepository,
     SourceItemRepository,
     SourceRepository,
+    UsageCounterRepository,
 )
 from autocontent.services.llm_gateway import LLMGateway
 from autocontent.services.quota import NoopQuotaService, QuotaBackend
@@ -38,6 +39,7 @@ class DraftService:
         self._sources = SourceRepository(session)
         self._settings_repo = ProjectSettingsRepository(session)
         self._drafts = PostDraftRepository(session)
+        self._usage = UsageCounterRepository(session)
         if llm_gateway:
             self._llm_gateway = llm_gateway
         else:
@@ -77,7 +79,7 @@ class DraftService:
         try:
             facts = item.facts_cache
             if not facts:
-                facts = await self._extract_facts(item)
+                facts = await self._extract_facts(item, source.project_id)
                 await self._items.update_facts_cache(item.id, facts)
                 item.facts_cache = facts
 
@@ -89,6 +91,7 @@ class DraftService:
                 niche=niche,
                 max_post_len=max_post_len,
                 template_id=template_id,
+                project_id=source.project_id,
             )
         except Exception as exc:  # noqa: BLE001
             raise DraftGenerationError("LLM недоступен. Попробуйте позже.") from exc
@@ -98,6 +101,11 @@ class DraftService:
             template_id=template_id,
             text=content,
             draft_hash=draft_hash,
+        )
+        await self._usage.increment(
+            project_id=source.project_id,
+            day=_today_utc(),
+            drafts_generated=1,
         )
         return draft
 
@@ -113,7 +121,7 @@ class DraftService:
     async def reject_draft(self, draft_id: int) -> None:
         await self.set_status(draft_id, "rejected")
 
-    async def _extract_facts(self, item: SourceItem) -> str:
+    async def _extract_facts(self, item: SourceItem, project_id: int) -> str:
         raw_text = normalize_text(item.raw_text or "")
         prompt = (
             "Extract 5 concise facts for a Telegram post from the following content.\n"
@@ -121,6 +129,12 @@ class DraftService:
             f"{raw_text}"
         )
         response = await self._llm_gateway.generate(prompt=prompt, max_post_len=512)
+        await self._usage.increment(
+            project_id=project_id,
+            day=_today_utc(),
+            llm_calls=1,
+            tokens_est=response.tokens_estimated,
+        )
         return normalize_text(response.content)
 
     async def _render_post(
@@ -132,6 +146,7 @@ class DraftService:
         niche: str,
         max_post_len: int,
         template_id: str | None,
+        project_id: int,
     ) -> str:
         prompt = render_prompt(
             template_id=template_id,
@@ -144,6 +159,12 @@ class DraftService:
         )
         response: LLMResponse = await self._llm_gateway.generate(
             prompt=prompt, max_post_len=max_post_len, seed=1
+        )
+        await self._usage.increment(
+            project_id=project_id,
+            day=_today_utc(),
+            llm_calls=1,
+            tokens_est=response.tokens_estimated,
         )
         content = normalize_text(response.content)
         if link not in content:
@@ -161,3 +182,7 @@ class DraftService:
 
 def compute_draft_hash(project_id: int, source_item_id: int, template_id: str | None, raw_text: str) -> str:
     return _compute_draft_hash(project_id, source_item_id, template_id, raw_text)
+
+
+def _today_utc() -> date:
+    return datetime.now(timezone.utc).date()

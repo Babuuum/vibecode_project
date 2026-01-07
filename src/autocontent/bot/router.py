@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from typing import Any, Iterable
+from datetime import datetime, timezone
 
 from aiogram import F, Router
 from aiogram.enums import ParseMode
@@ -34,6 +35,7 @@ from autocontent.repos import (
     ScheduleRepository,
     SourceItemRepository,
     SourceRepository,
+    UsageCounterRepository,
 )
 from autocontent.services import ChannelBindingService, DraftService, ProjectService, SourceService
 from autocontent.services.channel_binding import ChannelBindingNotFoundError
@@ -87,7 +89,15 @@ AUTPOST_MENU = [
     "Назад",
 ]
 SLOT_PRESETS = ["10:00,14:00,18:00", "09:00,12:00,15:00,18:00", "08:00,12:00,20:00"]
-SOURCE_MENU = ["Добавить RSS", "Добавить URL", "Список источников", "Fetch now", "Автопостинг", "Шаблоны"] + DRAFT_MENU + CHANNEL_MENU
+SOURCE_MENU = [
+    "Добавить RSS",
+    "Добавить URL",
+    "Список источников",
+    "Fetch now",
+    "Автопостинг",
+    "Шаблоны",
+    "Расходы/Квоты",
+] + DRAFT_MENU + CHANNEL_MENU
 SOURCE_STATUS_MENU = ["Статус источников"] + SOURCE_MENU
 COOLDOWN_TTL_SECONDS = 45
 STATUS_DRAFTS_LIMIT = 5
@@ -443,6 +453,31 @@ async def template_select_handler(message: Message, state: FSMContext, session: 
     preset = TEMPLATE_PRESETS[template_id]
     await message.answer(
         f"Шаблон обновлен: {preset.template_id} — {preset.title}.",
+        reply_markup=_build_keyboard(SOURCE_MENU),
+    )
+
+
+@router.message(F.text == "Расходы/Квоты")
+async def usage_handler(message: Message, state: FSMContext, session: AsyncSession) -> Any:
+    project_id = await _resolve_project_id(message, state, session)
+    if not project_id:
+        await message.answer("Проект не найден. Начни с /start.")
+        return
+
+    usage_repo = UsageCounterRepository(session)
+    day = datetime.now(timezone.utc).date()
+    usage = await usage_repo.get_by_project_day(project_id, day)
+    drafts_generated = usage.drafts_generated if usage else 0
+    posts_published = usage.posts_published if usage else 0
+    llm_calls = usage.llm_calls if usage else 0
+    tokens_est = usage.tokens_est if usage else 0
+
+    await message.answer(
+        "Расходы за сегодня:\n"
+        f"Драфты: {drafts_generated}\n"
+        f"Публикации: {posts_published}\n"
+        f"LLM вызовы: {llm_calls}\n"
+        f"Токены (оценка): {tokens_est}",
         reply_markup=_build_keyboard(SOURCE_MENU),
     )
 

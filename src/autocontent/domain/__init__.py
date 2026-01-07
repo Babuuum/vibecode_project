@@ -8,6 +8,7 @@ from .models import (
     Schedule,
     Source,
     SourceItem,
+    UsageCounter,
     User,
 )
 
@@ -21,5 +22,6 @@ __all__ = [
     "Schedule",
     "Source",
     "SourceItem",
+    "UsageCounter",
     "PostDraft",
 ]
