@@ -39,6 +39,11 @@ make up
 ```
 
 ## Production
+Create a production env file:
+```bash
+cp .env.prod.example .env.prod
+```
+
 Use the production compose file and the update script:
 ```bash
 ./scripts/update_prod.sh
@@ -46,13 +51,30 @@ Use the production compose file and the update script:
 
 Postgres backup (host cron):
 ```bash
-./scripts/backup_postgres.sh
+ENV_FILE=.env.prod ./scripts/backup_postgres.sh
 ```
 
 Example cron (daily at 03:15):
 ```
-15 3 * * * /bin/bash /path/to/project/scripts/backup_postgres.sh >> /path/to/project/backups/cron.log 2>&1
+15 3 * * * ENV_FILE=/path/to/project/.env.prod RETENTION_DAYS=7 /bin/bash /path/to/project/scripts/backup_postgres.sh >> /path/to/project/backups/cron.log 2>&1
 ```
+
+### Runbook
+Update:
+1) `git pull`
+2) `docker compose -f docker-compose.prod.yml up -d --build`
+3) `docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head`
+4) Smoke: `curl -fsS http://localhost:8000/healthz`
+
+Rollback (minimal):
+1) `git checkout <known-good-commit>`
+2) `docker compose -f docker-compose.prod.yml up -d --build`
+3) `docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head`
+
+Smoke scenario (real or mock):
+1) Add a test channel and ensure bot has publish rights.
+2) Add a source, run `Fetch now`, generate a draft, and approve/publish via bot.
+3) Or call admin API to publish a known draft: `POST /admin/drafts/{id}/publish` with `X-API-Key`.
 
 ## Migrations
 - Placeholder: add Alembic revisions under `migrations/versions/` and run `make migrate`.

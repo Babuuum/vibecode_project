@@ -8,9 +8,11 @@ services:
     command: uvicorn src.autocontent.api.main:app --host 0.0.0.0 --port 8000
     restart: unless-stopped
     env_file:
-      - .env
+      - .env.prod
     ports:
       - "8000:8000"
+    volumes:
+      - logs_data:/var/log/autocontent
     depends_on:
       postgres:
         condition: service_healthy
@@ -29,7 +31,9 @@ services:
     command: python -m src.autocontent.bot.main
     restart: unless-stopped
     env_file:
-      - .env
+      - .env.prod
+    volumes:
+      - logs_data:/var/log/autocontent
     depends_on:
       redis:
         condition: service_healthy
@@ -41,7 +45,9 @@ services:
     command: celery -A src.autocontent.infrastructure.celery_app worker -l info
     restart: unless-stopped
     env_file:
-      - .env
+      - .env.prod
+    volumes:
+      - logs_data:/var/log/autocontent
     depends_on:
       postgres:
         condition: service_healthy
@@ -81,3 +87,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  logs_data:
